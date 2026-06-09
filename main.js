@@ -27,6 +27,11 @@ let transitionOpacityBullet = 0.0;
 // Detección de preferencia de movimiento reducido
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+// Detección de dispositivo táctil
+const isTouchDevice = window.matchMedia('(pointer:coarse)').matches || 
+                      ('ontouchstart' in window) || 
+                      navigator.maxTouchPoints > 0;
+
 // Variables para la interacción y animación cinematográfica
 let targetHoverRed = 0.0;
 let targetHoverBlue = 0.0;
@@ -620,6 +625,7 @@ function resetToMatrix() {
 
   // Reiniciar vídeos
   if (video) {
+    video.pause();
     video.currentTime = 0;
   }
   if (bulletVideo) {
@@ -773,9 +779,23 @@ function animate() {
     // Calcular suavizado de scroll mediante lerp
     scrollProgress += (targetScrollProgress - scrollProgress) * 0.05;
 
-    // Sincronizar el progreso del vídeo fotograma a fotograma
-    if (video && !isNaN(video.duration) && video.duration > 0) {
-      video.currentTime = scrollProgress * video.duration;
+    // En móviles/touch, reproducir corrido al entrar en la sección en lugar de scrubbear
+    if (isTouchDevice) {
+      if (scrollProgress > 0.15) {
+        if (video && video.paused) {
+          video.play().catch(e => console.warn("Error playing pills video on mobile scroll:", e));
+        }
+      } else {
+        if (video && !video.paused) {
+          video.pause();
+          video.currentTime = 0;
+        }
+      }
+    } else {
+      // Sincronizar el progreso del vídeo fotograma a fotograma en desktop
+      if (video && !isNaN(video.duration) && video.duration > 0) {
+        video.currentTime = scrollProgress * video.duration;
+      }
     }
 
     // 3. CONTROL DE OPACIDAD AJUSTADO (Fundido encadenado / Cross-fade)
@@ -913,4 +933,44 @@ function onWindowResize() {
   console.log("Resize triggered. Size:", window.innerWidth, "x", window.innerHeight);
 }
 
-init();
+// Gesto de entrada para desbloquear vídeo en móviles e iniciar experiencia
+const entryBtn = document.getElementById('entry-btn');
+if (entryBtn) {
+  let started = false;
+  const startExperience = (e) => {
+    if (started) return;
+    started = true;
+    
+    if (e) e.preventDefault();
+    
+    // Inicializar experiencia Three.js (crea elementos de vídeo e inicia bucle)
+    init();
+
+    // Desbloqueo inmediato en iOS haciendo play e inmediatamente pause
+    if (video) {
+      video.play().then(() => {
+        video.pause();
+      }).catch(err => console.warn("Error unlocking pills video:", err));
+    }
+    if (bulletVideo) {
+      bulletVideo.play().then(() => {
+        bulletVideo.pause();
+      }).catch(err => console.warn("Error unlocking bullet video:", err));
+    }
+
+    // Ocultar overlay con transición CSS
+    const entryOverlay = document.getElementById('entry-overlay');
+    if (entryOverlay) {
+      entryOverlay.classList.add('fade-out');
+      setTimeout(() => {
+        entryOverlay.style.display = 'none';
+      }, 1000);
+    }
+  };
+
+  entryBtn.addEventListener('click', startExperience);
+  entryBtn.addEventListener('touchstart', startExperience, { passive: false });
+} else {
+  // Fallback por si no existe el overlay en el DOM
+  init();
+}
