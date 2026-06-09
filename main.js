@@ -88,6 +88,7 @@ const fragmentShader = `
   uniform sampler2D uTexture;
   uniform float uHoverRed;
   uniform float uHoverBlue;
+  uniform float uMatrixOpacity;
   varying vec2 vUv;
   varying vec3 vRandom;
 
@@ -172,7 +173,7 @@ const fragmentShader = `
 
     vec3 finalColor = mix(greenColor, whiteColor, headGlow * 0.85);
 
-    gl_FragColor = vec4(finalColor * intensity * charTex, intensity * charTex);
+    gl_FragColor = vec4(finalColor * intensity * charTex * uMatrixOpacity, intensity * charTex * uMatrixOpacity);
 
     // Aplicar niebla nativa
     #include <fog_fragment>
@@ -291,7 +292,8 @@ function init() {
         uTime: { value: 0 },
         uTexture: { value: characterTexture },
         uHoverRed: { value: 0 },
-        uHoverBlue: { value: 0 }
+        uHoverBlue: { value: 0 },
+        uMatrixOpacity: { value: 1.0 }
       }
     ]),
     vertexShader: vertexShader,
@@ -493,11 +495,15 @@ function animate() {
       video.currentTime = scrollProgress * video.duration;
     }
 
-    // 3. CONTROL DE OPACIDAD AJUSTADO
-    // Invisible desde 0.0 a 0.3. Fundido a 1.0 entre 0.3 y 0.85
+    // 3. CONTROL DE OPACIDAD AJUSTADO (Fundido encadenado / Cross-fade)
+    const videoOpacity = THREE.MathUtils.clamp((scrollProgress - 0.2) / 0.6, 0.0, 1.0);
+    const matrixOpacity = THREE.MathUtils.clamp(1.0 - (scrollProgress - 0.2) / 0.65, 0.0, 1.0);
+
     if (videoMaterial) {
-      const targetOpacity = Math.max(0.0, Math.min(1.0, (scrollProgress - 0.3) / 0.55));
-      videoMaterial.uniforms.uOpacity.value = targetOpacity;
+      videoMaterial.uniforms.uOpacity.value = videoOpacity;
+    }
+    if (material) {
+      material.uniforms.uMatrixOpacity.value = matrixOpacity;
     }
 
     // Comprobación de hito interactivo (> 0.98)
