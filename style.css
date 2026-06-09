@@ -64,72 +64,35 @@ html, body {
   user-select: none;
 }
 
-.pills-container {
-  display: flex;
-  gap: 2.5rem;
-}
-
-.pill-button {
-  pointer-events: auto;
+.pill-hotspot {
+  position: absolute;
+  background: transparent;
+  border: none;
   cursor: pointer;
-  background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.02) 60%, rgba(0, 0, 0, 0.45) 100%);
-  backdrop-filter: blur(14px) saturate(120%);
-  -webkit-backdrop-filter: blur(14px) saturate(120%);
-  color: rgba(255, 255, 255, 0.9);
-  font-family: inherit;
-  font-size: 0.95rem;
-  font-weight: 700;
-  letter-spacing: 0.15em;
-  padding: 15px 30px;
-  border-radius: 50px; /* Forma de píldora perfectamente redondeada */
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  box-shadow: 
-    inset 1px 1px 3px rgba(255, 255, 255, 0.35), 
-    inset -1px -1px 3px rgba(0, 0, 0, 0.6), 
-    0 4px 15px rgba(0, 0, 0, 0.55);
+  width: clamp(70px, 9vw, 150px);
+  aspect-ratio: 2 / 1;
+  border-radius: 9999px;
+  pointer-events: auto;
   outline: none;
-  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  min-height: 48px; /* Target táctil >= 44px */
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  transition: all 0.3s ease;
+  z-index: 15;
 }
 
-.pill-button:focus-visible {
-  outline: 2px solid #00ff41;
-  outline-offset: 4px;
+.pill-hotspot:focus-visible {
+  outline: 2px dashed #00ff41;
+  outline-offset: 6px;
 }
 
-.pill-button.blue {
-  border: 1px solid rgba(0, 140, 255, 0.35);
+.pill-hotspot.blue {
+  left: 22%;
+  top: 63%;
+  transform: translate(-50%, -50%);
 }
 
-.pill-button.blue:hover {
-  background: radial-gradient(circle at 30% 30%, rgba(0, 140, 255, 0.35), rgba(0, 70, 255, 0.1) 60%, rgba(0, 0, 0, 0.65) 100%);
-  border-color: rgba(0, 140, 255, 0.85);
-  box-shadow: 
-    0 0 25px rgba(0, 140, 255, 0.65), 
-    inset 0 0 10px rgba(0, 140, 255, 0.35), 
-    inset 1px 1px 3px rgba(255, 255, 255, 0.45), 
-    inset -1px -1px 3px rgba(0, 0, 0, 0.6);
-  text-shadow: 0 0 8px rgba(0, 140, 255, 0.8);
-  transform: translateY(-2px);
-}
-
-.pill-button.red {
-  border: 1px solid rgba(255, 50, 50, 0.35);
-}
-
-.pill-button.red:hover {
-  background: radial-gradient(circle at 30% 30%, rgba(255, 50, 50, 0.35), rgba(200, 30, 30, 0.1) 60%, rgba(0, 0, 0, 0.65) 100%);
-  border-color: rgba(255, 50, 50, 0.85);
-  box-shadow: 
-    0 0 25px rgba(255, 50, 50, 0.65), 
-    inset 0 0 10px rgba(255, 50, 50, 0.35), 
-    inset 1px 1px 3px rgba(255, 255, 255, 0.45), 
-    inset -1px -1px 3px rgba(0, 0, 0, 0.6);
-  text-shadow: 0 0 8px rgba(255, 50, 50, 0.8);
-  transform: translateY(-2px);
+.pill-hotspot.red {
+  left: 84%;
+  top: 62%;
+  transform: translate(-50%, -50%);
 }
 
 @keyframes pulse {
@@ -159,10 +122,6 @@ html, body {
     font-size: 1.4rem;
     letter-spacing: 0.3em;
     text-indent: 0.3em;
-  }
-  .pills-container {
-    flex-direction: column;
-    gap: 1.2rem;
   }
 }
 

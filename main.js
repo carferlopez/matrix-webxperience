@@ -490,8 +490,8 @@ function setupScrollController() {
 }
 
 function setupUIEventListeners() {
-  const redButton = document.querySelector('.pill-button.red');
-  const blueButton = document.querySelector('.pill-button.blue');
+  const redButton = document.querySelector('.pill-hotspot.red');
+  const blueButton = document.querySelector('.pill-hotspot.blue');
   const uiOverlay = document.getElementById('ui-overlay');
 
   if (redButton && blueButton) {
@@ -503,6 +503,15 @@ function setupUIEventListeners() {
     redButton.addEventListener('mouseleave', () => {
       targetHoverRed = 0.0;
     });
+    redButton.addEventListener('touchstart', () => {
+      if (interactionsActivated) targetHoverRed = 1.0;
+    }, { passive: true });
+    redButton.addEventListener('touchend', () => {
+      targetHoverRed = 0.0;
+    }, { passive: true });
+    redButton.addEventListener('touchcancel', () => {
+      targetHoverRed = 0.0;
+    }, { passive: true });
 
     blueButton.addEventListener('mouseenter', () => {
       if (interactionsActivated) targetHoverBlue = 1.0;
@@ -510,6 +519,15 @@ function setupUIEventListeners() {
     blueButton.addEventListener('mouseleave', () => {
       targetHoverBlue = 0.0;
     });
+    blueButton.addEventListener('touchstart', () => {
+      if (interactionsActivated) targetHoverBlue = 1.0;
+    }, { passive: true });
+    blueButton.addEventListener('touchend', () => {
+      targetHoverBlue = 0.0;
+    }, { passive: true });
+    blueButton.addEventListener('touchcancel', () => {
+      targetHoverBlue = 0.0;
+    }, { passive: true });
 
     redButton.addEventListener('click', () => {
       if (appState !== 'MATRIX' || !interactionsActivated) return;
