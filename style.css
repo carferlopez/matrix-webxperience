@@ -48,11 +48,18 @@ html, body {
 
 .wake-up-title {
   color: #ffffff;
-  font-size: 2.2rem;
-  font-weight: 300;
-  letter-spacing: 0.35em;
+  font-family: 'Libre Baskerville', 'Times New Roman', Georgia, serif;
+  font-size: 2.5rem;
+  font-weight: 700;
+  letter-spacing: 0.6em;
+  text-indent: 0.6em; /* Compensar espaciado al final para centrado perfecto */
   text-transform: uppercase;
-  text-shadow: 0 0 10px rgba(0, 255, 70, 0.15);
+  text-shadow: 
+    0 0 4px rgba(255, 255, 255, 0.8),
+    0 0 10px #00ff41,
+    0 0 20px #00ff41,
+    0 0 35px #00ff41,
+    0 0 55px #00ff41;
   animation: pulse 4s infinite ease-in-out;
   user-select: none;
 }
@@ -104,18 +111,30 @@ html, body {
 @keyframes pulse {
   0%, 100% {
     opacity: 0.9;
-    text-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+    text-shadow: 
+      0 0 4px rgba(255, 255, 255, 0.8),
+      0 0 10px #00ff41,
+      0 0 20px #00ff41,
+      0 0 35px #00ff41,
+      0 0 55px #00ff41;
   }
   50% {
     opacity: 1;
-    text-shadow: 0 0 20px rgba(0, 255, 70, 0.3);
+    text-shadow: 
+      0 0 6px rgba(255, 255, 255, 1),
+      0 0 15px #00ff41,
+      0 0 30px #00ff41,
+      0 0 50px #00ff41,
+      0 0 80px #00ff41,
+      0 0 120px #00ff41;
   }
 }
 
 @media (max-width: 768px) {
   .wake-up-title {
     font-size: 1.4rem;
-    letter-spacing: 0.2em;
+    letter-spacing: 0.3em;
+    text-indent: 0.3em;
   }
   .pills-container {
     flex-direction: column;
