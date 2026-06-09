@@ -253,4 +253,4 @@ function onWindowResize() {
   composer.setSize(window.innerWidth, window.innerHeight);
 }
 
-window.addEventListener('DOMContentLoaded', init);
+init();
