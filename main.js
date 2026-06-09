@@ -264,14 +264,14 @@ function init() {
 
   // 1. CREACIÓN PROGRAMÁTICA DEL ELEMENTO DE VÍDEO
   video = document.createElement('video');
-  video.src = '/morfeo_pills_opt.mp4';
+  video.src = isTouchDevice ? '/morfeo_pills_opt_mobile.mp4' : '/morfeo_pills_opt.mp4';
   video.preload = 'auto';
   video.muted = true;
   video.playsInline = true;
   video.setAttribute('playsinline', '');
   video.setAttribute('webkit-playsinline', '');
   video.loop = false;
-  console.log("Programmatic video element initialized.");
+  console.log("Programmatic video element initialized. Mobile:", isTouchDevice);
 
   videoTexture = new THREE.VideoTexture(video);
   videoTexture.minFilter = THREE.LinearFilter;
@@ -279,7 +279,7 @@ function init() {
 
   // CREACIÓN PROGRAMÁTICA DEL VÍDEO DE BULLET-TIME (con fallback dinámico y audio)
   bulletVideo = document.createElement('video');
-  bulletVideo.src = '/bullet_time.mp4';
+  bulletVideo.src = isTouchDevice ? '/bullet_time_mobile.mp4' : '/bullet_time.mp4';
   bulletVideo.preload = 'auto';
   bulletVideo.muted = false; // Permitimos audio porque se reproduce tras el click del usuario
   bulletVideo.playsInline = true;
@@ -287,15 +287,15 @@ function init() {
   bulletVideo.setAttribute('webkit-playsinline', '');
   bulletVideo.loop = false;
   bulletVideo.addEventListener('error', () => {
-    console.warn("bullet_time.mp4 not found, falling back to /morfeo_pills_opt.mp4");
-    bulletVideo.src = '/morfeo_pills_opt.mp4';
+    console.warn("bulletVideo load error, falling back");
+    bulletVideo.src = isTouchDevice ? '/morfeo_pills_opt_mobile.mp4' : '/morfeo_pills_opt.mp4';
     bulletVideo.muted = true; // El fallback se reproduce silenciado
   });
   bulletVideo.addEventListener('ended', () => {
     console.log("bulletVideo ended, transitioning to END_RED");
     transitionToEndRed();
   });
-  console.log("Programmatic bulletVideo element initialized.");
+  console.log("Programmatic bulletVideo element initialized. Mobile:", isTouchDevice);
 
   bulletTexture = new THREE.VideoTexture(bulletVideo);
   bulletTexture.minFilter = THREE.LinearFilter;
