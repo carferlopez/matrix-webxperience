@@ -9,7 +9,7 @@ html, body {
   height: 100%;
   overflow: hidden;
   background-color: #000000;
-  font-family: monospace;
+  font-family: 'Courier New', Courier, monospace;
 }
 
 #matrix-canvas {
@@ -19,4 +19,106 @@ html, body {
   width: 100%;
   height: 100%;
   outline: none;
+  z-index: 1;
+}
+
+#ui-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 10;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+  background: radial-gradient(circle, rgba(0, 0, 0, 0.1) 0%, rgba(0, 0, 0, 0.6) 100%);
+}
+
+.ui-content {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3rem;
+}
+
+.wake-up-title {
+  color: #ffffff;
+  font-size: 2.2rem;
+  font-weight: 300;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  text-shadow: 0 0 10px rgba(0, 255, 70, 0.15);
+  animation: pulse 4s infinite ease-in-out;
+  user-select: none;
+}
+
+.pills-container {
+  display: flex;
+  gap: 2.5rem;
+}
+
+.pill-button {
+  pointer-events: auto;
+  cursor: pointer;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  padding: 14px 28px;
+  border-radius: 4px;
+  outline: none;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.pill-button.blue {
+  border: 1px solid rgba(0, 140, 255, 0.45);
+}
+
+.pill-button.blue:hover {
+  background: rgba(0, 120, 255, 0.15);
+  border-color: rgba(0, 140, 255, 1);
+  box-shadow: 0 0 25px rgba(0, 140, 255, 0.55), inset 0 0 10px rgba(0, 140, 255, 0.2);
+  transform: translateY(-2px);
+}
+
+.pill-button.red {
+  border: 1px solid rgba(255, 50, 50, 0.45);
+}
+
+.pill-button.red:hover {
+  background: rgba(255, 40, 40, 0.15);
+  border-color: rgba(255, 50, 50, 1);
+  box-shadow: 0 0 25px rgba(255, 50, 50, 0.55), inset 0 0 10px rgba(255, 50, 50, 0.2);
+  transform: translateY(-2px);
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 0.9;
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+  }
+  50% {
+    opacity: 1;
+    text-shadow: 0 0 20px rgba(0, 255, 70, 0.3);
+  }
+}
+
+@media (max-width: 768px) {
+  .wake-up-title {
+    font-size: 1.4rem;
+    letter-spacing: 0.2em;
+  }
+  .pills-container {
+    flex-direction: column;
+    gap: 1.2rem;
+  }
 }
