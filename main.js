@@ -445,7 +445,7 @@ function init() {
 
   // Asegurar que la cámara se use como referencia inicial de foco
   if (videoMesh) {
-    dofEffect.target.copy(videoMesh.position);
+    dofEffect.target = videoMesh.position;
   }
 
   const effectPass = new EffectPass(camera, bloomEffect, noiseEffect, chromaEffect, vignetteEffect, dofEffect);
@@ -638,7 +638,7 @@ function resetToMatrix() {
 
   // Restablecer foco del dofEffect
   if (dofEffect && videoMesh) {
-    dofEffect.target.copy(videoMesh.position);
+    dofEffect.target = videoMesh.position;
   }
 
   // Ocultar overlays
@@ -745,9 +745,9 @@ function animate() {
   // Rack focus dinámico con DepthOfField
   if (dofEffect) {
     if (appState === 'BULLET_TIME' && bulletMesh) {
-      dofEffect.target.copy(bulletMesh.position);
+      dofEffect.target = bulletMesh.position;
     } else if (videoMesh) {
-      dofEffect.target.copy(videoMesh.position);
+      dofEffect.target = videoMesh.position;
     }
   }
 
