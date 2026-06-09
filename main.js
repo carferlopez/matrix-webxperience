@@ -4,8 +4,11 @@ import { EffectComposer, RenderPass, EffectPass, BloomEffect, NoiseEffect, Blend
 let scene, camera, renderer, composer;
 let material, clock;
 
+console.log("main.js loaded");
+
 // 1. GENERADOR DE TEXTURAS PROCEDIMENTAL
 function createCharacterTexture() {
+  console.log("Generating character texture...");
   const canvas = document.createElement('canvas');
   canvas.width = 64;
   canvas.height = 1024;
@@ -28,7 +31,6 @@ function createCharacterTexture() {
 
   for (let i = 0; i < 16; i++) {
     const char = chars[i];
-    // Centrar cada glifo verticalmente en su celda de 64x64 px
     ctx.fillText(char, 32, i * 64 + 32);
   }
 
@@ -36,6 +38,7 @@ function createCharacterTexture() {
   texture.minFilter = THREE.LinearFilter;
   texture.magFilter = THREE.LinearFilter;
   texture.needsUpdate = true;
+  console.log("Character texture generated.");
   return texture;
 }
 
@@ -93,7 +96,6 @@ const fragmentShader = `
     float glyphIdx = floor(glyphRand * 16.0);
 
     // Mapeo en el atlas de textura vertical (16 caracteres)
-    // El glifo 0 está al inicio del canvas (arriba), mapeado a V=1.0.
     vec2 uvAtlas = vec2(localU, (15.0 - glyphIdx + localV) / 16.0);
     float charTex = texture2D(uTexture, uvAtlas).r;
 
@@ -131,29 +133,36 @@ const fragmentShader = `
 `;
 
 function init() {
+  console.log("init() starting...");
+  
   // Escena y Niebla para volumen
   scene = new THREE.Scene();
   scene.fog = new THREE.FogExp2(0x000000, 0.015);
+  console.log("Scene and fog configured.");
 
   // Cámara Cinematográfica
   camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
   camera.position.z = 5;
+  console.log("Camera configured at Z:", camera.position.z);
 
   // Renderer de alto rendimiento
-  renderer = new WebGLRenderer();
-  
-  function WebGLRenderer() {
-    const canvasElement = document.querySelector('#matrix-canvas');
-    const instance = new THREE.WebGLRenderer({
-      canvas: canvasElement,
-      antialias: false,
-      powerPreference: "high-performance"
-    });
-    return instance;
+  const canvasElement = document.querySelector('#matrix-canvas');
+  if (!canvasElement) {
+    console.error("Canvas element '#matrix-canvas' NOT found!");
+    return;
   }
+  console.log("Canvas element found:", canvasElement);
+
+  renderer = new THREE.WebGLRenderer({
+    canvas: canvasElement,
+    antialias: false,
+    powerPreference: "high-performance"
+  });
+  console.log("WebGLRenderer instantiated.");
 
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  console.log("Renderer size set to:", window.innerWidth, "x", window.innerHeight);
 
   // Inicializar reloj
   clock = new THREE.Clock();
@@ -163,10 +172,13 @@ function init() {
 
   // Crear material personalizado
   material = new THREE.ShaderMaterial({
-    uniforms: {
-      uTime: { value: 0 },
-      uTexture: { value: characterTexture }
-    },
+    uniforms: THREE.UniformsUtils.merge([
+      THREE.UniformsLib.fog,
+      {
+        uTime: { value: 0 },
+        uTexture: { value: characterTexture }
+      }
+    ]),
     vertexShader: vertexShader,
     fragmentShader: fragmentShader,
     transparent: true,
@@ -174,6 +186,7 @@ function init() {
     depthWrite: false,
     fog: true
   });
+  console.log("ShaderMaterial created.");
 
   // 2. ARQUITECTURA DE RENDIMIENTO (InstancedMesh)
   const count = 600;
@@ -189,6 +202,7 @@ function init() {
   geometry.setAttribute('aRandom', new THREE.InstancedBufferAttribute(randomData, 3));
 
   const instancedMesh = new THREE.InstancedMesh(geometry, material, count);
+  console.log("InstancedMesh created with count:", count);
 
   const matrix = new THREE.Matrix4();
   const position = new THREE.Vector3();
@@ -208,9 +222,14 @@ function init() {
     matrix.compose(position, quaternion, scale);
     instancedMesh.setMatrixAt(i, matrix);
   }
+  
+  // Forzar actualización de matrices en la GPU
+  instancedMesh.instanceMatrix.needsUpdate = true;
   scene.add(instancedMesh);
+  console.log("InstancedMesh populated and added to scene.");
 
   // 4. PIPELINE DE POSTPROCESADO (La Lente)
+  console.log("Setting up postprocessing...");
   composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
 
@@ -229,20 +248,31 @@ function init() {
 
   const effectPass = new EffectPass(camera, bloomEffect, noiseEffect);
   composer.addPass(effectPass);
+  console.log("Postprocessing composer and passes configured.");
 
   window.addEventListener('resize', onWindowResize);
   
+  console.log("Starting animation loop...");
   animate();
 }
 
+let frameCount = 0;
 function animate() {
   requestAnimationFrame(animate);
 
+  const elapsedTime = clock.getElapsedTime();
+  
   // Pasar el tiempo de ejecución al Shader
   if (material) {
-    material.uniforms.uTime.value = clock.getElapsedTime();
+    material.uniforms.uTime.value = elapsedTime;
   }
 
+  frameCount++;
+  if (frameCount % 100 === 0) {
+    console.log(`Render loop running... frames: ${frameCount}, time: ${elapsedTime.toFixed(2)}s`);
+  }
+
+  // Render using composer with postprocessing effects (Bloom & Film Noise)
   composer.render();
 }
 
@@ -251,6 +281,7 @@ function onWindowResize() {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
   composer.setSize(window.innerWidth, window.innerHeight);
+  console.log("Resize triggered. Size:", window.innerWidth, "x", window.innerHeight);
 }
 
 init();
