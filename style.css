@@ -130,19 +130,33 @@ html, body {
   }
 }
 
-/* Hotspots: reposicionamiento para portrait móvil (encuadre cover) */
-@media (max-width: 768px) and (orientation: portrait) {
-  .pill-hotspot.blue {
-    left: 30vw;
-    top: 62vh;
-    width: 20vw;
-    height: 11vh;
+@media (max-width: 768px), (pointer: coarse) {
+  #ui-overlay {
+    --choice-video-left: calc(50vw - 50vmin);
+    --choice-video-top: calc(50vh - 50vmin);
   }
+
+  .ui-content {
+    top: max(1rem, calc(var(--choice-video-top) - 5rem));
+    padding: 0 1rem;
+    gap: 1.5rem;
+  }
+
+  .pill-hotspot.blue,
   .pill-hotspot.red {
-    left: 70vw;
-    top: 62vh;
-    width: 20vw;
-    height: 11vh;
+    width: clamp(82px, 30vmin, 150px);
+    height: clamp(58px, 18vmin, 96px);
+    border-radius: 999px;
+  }
+
+  .pill-hotspot.blue {
+    left: calc(var(--choice-video-left) + 8vmin);
+    top: calc(var(--choice-video-top) + 59vmin);
+  }
+
+  .pill-hotspot.red {
+    left: calc(var(--choice-video-left) + 92vmin);
+    top: calc(var(--choice-video-top) + 59vmin);
   }
 }
 

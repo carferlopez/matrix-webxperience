@@ -23,6 +23,7 @@ let bulletVideoLoaded = false;
 let transitionOpacityMatrix = 1.0;
 let transitionOpacityVideo = 0.0;
 let transitionOpacityBullet = 0.0;
+let choiceVideoSyncedToScroll = false;
 
 // Detección de preferencia de movimiento reducido
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -31,6 +32,60 @@ const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)
 const isTouchDevice = window.matchMedia('(pointer:coarse)').matches || 
                       ('ontouchstart' in window) || 
                       navigator.maxTouchPoints > 0;
+
+const VIDEO_PLANE_DISTANCE = 4.0;
+const COMPACT_VIEWPORT_WIDTH = 768;
+const CHOICE_VIDEO_END_OFFSET = 0.12;
+
+function shouldUseMobileChoiceLayout() {
+  return isTouchDevice || window.innerWidth <= COMPACT_VIEWPORT_WIDTH;
+}
+
+function getViewportPlaneSize(distance = VIDEO_PLANE_DISTANCE) {
+  const height = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * distance;
+  const width = height * (window.innerWidth / window.innerHeight);
+  return { width, height };
+}
+
+function getChoiceVideoPlaneSize() {
+  const viewportSize = getViewportPlaneSize();
+
+  if (!shouldUseMobileChoiceLayout()) {
+    return viewportSize;
+  }
+
+  const squareSize = Math.min(viewportSize.width, viewportSize.height);
+  return {
+    width: squareSize,
+    height: squareSize
+  };
+}
+
+function hasLoadedVideoDuration(mediaElement) {
+  return mediaElement && Number.isFinite(mediaElement.duration) && mediaElement.duration > 0;
+}
+
+function syncChoiceVideoToScroll(progress) {
+  if (!hasLoadedVideoDuration(video)) {
+    choiceVideoSyncedToScroll = false;
+    return false;
+  }
+
+  if (!video.paused) {
+    video.pause();
+  }
+
+  const normalizedProgress = progress >= 0.98 ? 1 : THREE.MathUtils.clamp(progress, 0, 1);
+  const finalChoiceTime = Math.max(video.duration - CHOICE_VIDEO_END_OFFSET, 0);
+  const targetTime = normalizedProgress * finalChoiceTime;
+
+  if (Math.abs(video.currentTime - targetTime) > 0.03) {
+    video.currentTime = targetTime;
+  }
+
+  choiceVideoSyncedToScroll = true;
+  return true;
+}
 
 // Variables para la interacción y animación cinematográfica
 let targetHoverRed = 0.0;
@@ -279,14 +334,14 @@ function init() {
 
   // 1. CREACIÓN PROGRAMÁTICA DEL ELEMENTO DE VÍDEO
   video = document.createElement('video');
-  video.src = isTouchDevice ? '/morfeo_pills_opt_mobile.mp4' : '/morfeo_pills_opt.mp4';
+  video.src = shouldUseMobileChoiceLayout() ? '/morfeo_pills_opt_mobile.mp4' : '/morfeo_pills_opt.mp4';
   video.preload = 'auto';
   video.muted = true;
   video.playsInline = true;
   video.setAttribute('playsinline', '');
   video.setAttribute('webkit-playsinline', '');
   video.loop = false;
-  console.log("Programmatic video element initialized. Mobile:", isTouchDevice);
+  console.log("Programmatic video element initialized. Mobile layout:", shouldUseMobileChoiceLayout());
 
   videoTexture = new THREE.VideoTexture(video);
   videoTexture.minFilter = THREE.LinearFilter;
@@ -294,7 +349,7 @@ function init() {
 
   // CREACIÓN PROGRAMÁTICA DEL VÍDEO DE BULLET-TIME (con fallback dinámico y audio)
   bulletVideo = document.createElement('video');
-  bulletVideo.src = isTouchDevice ? '/bullet_time_mobile.mp4' : '/bullet_time.mp4';
+  bulletVideo.src = shouldUseMobileChoiceLayout() ? '/bullet_time_mobile.mp4' : '/bullet_time.mp4';
   bulletVideo.preload = 'none';
   bulletVideo.muted = true; // Se desmutea justo antes del play, tras el click del usuario
   bulletVideo.playsInline = true;
@@ -303,24 +358,24 @@ function init() {
   bulletVideo.loop = false;
   bulletVideo.addEventListener('error', () => {
     console.warn("bulletVideo load error, falling back");
-    bulletVideo.src = isTouchDevice ? '/morfeo_pills_opt_mobile.mp4' : '/morfeo_pills_opt.mp4';
+    bulletVideo.src = shouldUseMobileChoiceLayout() ? '/morfeo_pills_opt_mobile.mp4' : '/morfeo_pills_opt.mp4';
     bulletVideo.muted = true; // El fallback se reproduce silenciado
   });
   bulletVideo.addEventListener('ended', () => {
     console.log("bulletVideo ended, transitioning to END_RED");
     transitionToEndRed();
   });
-  console.log("Programmatic bulletVideo element initialized. Mobile:", isTouchDevice);
+  console.log("Programmatic bulletVideo element initialized. Mobile layout:", shouldUseMobileChoiceLayout());
 
   bulletTexture = new THREE.VideoTexture(bulletVideo);
   bulletTexture.minFilter = THREE.LinearFilter;
   bulletTexture.magFilter = THREE.LinearFilter;
 
-  // 2. CÁLCULO DINÁMICO DEL FRUSTUM (Ajuste al 100% de pantalla a 4.0 unidades de distancia)
-  const visibleHeight = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * 4.0;
-  const visibleWidth = visibleHeight * (window.innerWidth / window.innerHeight);
-  const videoGeometry = new THREE.PlaneGeometry(visibleWidth, visibleHeight);
-  console.log(`Dynamic frustum size at Z-offset 4.0: ${visibleWidth.toFixed(2)} x ${visibleHeight.toFixed(2)}`);
+  // 2. CÁLCULO DINÁMICO DEL FRUSTUM
+  const choiceVideoSize = getChoiceVideoPlaneSize();
+  const viewportPlaneSize = getViewportPlaneSize();
+  const videoGeometry = new THREE.PlaneGeometry(choiceVideoSize.width, choiceVideoSize.height);
+  console.log(`Choice video plane size: ${choiceVideoSize.width.toFixed(2)} x ${choiceVideoSize.height.toFixed(2)}`);
 
   // SHADER DE INTEGRACIÓN PARA EL VÍDEO (Fusión suave aditiva con el negro)
   videoMaterial = new THREE.ShaderMaterial({
@@ -328,7 +383,7 @@ function init() {
       uVideoTexture: { value: videoTexture },
       uOpacity: { value: 0.0 },
       uVideoRes: { value: new THREE.Vector2(1920, 1080) },
-      uPlaneRes: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+      uPlaneRes: { value: new THREE.Vector2(choiceVideoSize.width, choiceVideoSize.height) }
     },
     vertexShader: videoVertexShader,
     fragmentShader: videoFragmentShader,
@@ -338,7 +393,7 @@ function init() {
   });
 
   videoMesh = new THREE.Mesh(videoGeometry, videoMaterial);
-  videoMesh.position.set(0, 0.0, camera.position.z - 4.0);
+  videoMesh.position.set(0, 0.0, camera.position.z - VIDEO_PLANE_DISTANCE);
   scene.add(videoMesh);
   console.log("Video plane mesh loaded at Z:", videoMesh.position.z);
 
@@ -348,7 +403,7 @@ function init() {
       uVideoTexture: { value: bulletTexture },
       uOpacity: { value: 0.0 },
       uVideoRes: { value: new THREE.Vector2(1920, 1080) },
-      uPlaneRes: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+      uPlaneRes: { value: new THREE.Vector2(viewportPlaneSize.width, viewportPlaneSize.height) }
     },
     vertexShader: videoVertexShader,
     fragmentShader: videoFragmentShader,
@@ -357,9 +412,9 @@ function init() {
     depthWrite: false
   });
 
-  const bulletGeometry = new THREE.PlaneGeometry(visibleWidth, visibleHeight);
+  const bulletGeometry = new THREE.PlaneGeometry(viewportPlaneSize.width, viewportPlaneSize.height);
   bulletMesh = new THREE.Mesh(bulletGeometry, bulletMaterial);
-  bulletMesh.position.set(0, 0.0, camera.position.z - 4.0);
+  bulletMesh.position.set(0, 0.0, camera.position.z - VIDEO_PLANE_DISTANCE);
   scene.add(bulletMesh);
   console.log("Bullet plane mesh loaded at Z:", bulletMesh.position.z);
 
@@ -593,9 +648,9 @@ function setupUIEventListeners() {
       transitionOpacityVideo = videoMaterial ? videoMaterial.uniforms.uOpacity.value : 0.0;
       transitionOpacityBullet = 0.0;
 
-      // Anclar la posición del plano de bullet time a 4 unidades frente a la cámara actual
+      // Anclar la posición del plano de bullet time frente a la cámara actual
       if (bulletMesh) {
-        bulletMesh.position.set(0, 0, camera.position.z - 4.0);
+        bulletMesh.position.set(0, 0, camera.position.z - VIDEO_PLANE_DISTANCE);
       }
       if (videoMesh) {
         // se queda estático en su Z actual para crear efecto de punch-through
@@ -665,6 +720,7 @@ function resetToMatrix() {
   interactionsActivated = false;
   cameraSpeed = 0.002;
   bulletVideoLoaded = false;
+  choiceVideoSyncedToScroll = false;
 
   // Restablecer opacidades de transición
   transitionOpacityMatrix = 1.0;
@@ -704,11 +760,11 @@ function resetToMatrix() {
 
   // Reposicionar los planos de vídeo en su posición de inicio
   if (videoMesh) {
-    videoMesh.position.set(0, 0.0, camera.position.z - 4.0);
+    videoMesh.position.set(0, 0.0, camera.position.z - VIDEO_PLANE_DISTANCE);
     videoMesh.rotation.set(0, 0, 0);
   }
   if (bulletMesh) {
-    bulletMesh.position.set(0, 0.0, camera.position.z - 4.0);
+    bulletMesh.position.set(0, 0.0, camera.position.z - VIDEO_PLANE_DISTANCE);
     bulletMesh.rotation.set(0, 0, 0);
   }
 
@@ -831,24 +887,8 @@ function animate() {
     // Calcular suavizado de scroll mediante lerp
     scrollProgress += (targetScrollProgress - scrollProgress) * 0.05;
 
-    // En móviles/touch, reproducir corrido al entrar en la sección en lugar de scrubbear
-    if (isTouchDevice) {
-      if (scrollProgress > 0.15) {
-        if (video && video.paused) {
-          video.play().catch(e => console.warn("Error playing pills video on mobile scroll:", e));
-        }
-      } else {
-        if (video && !video.paused) {
-          video.pause();
-          video.currentTime = 0;
-        }
-      }
-    } else {
-      // Sincronizar el progreso del vídeo fotograma a fotograma en desktop
-      if (video && !isNaN(video.duration) && video.duration > 0) {
-        video.currentTime = scrollProgress * video.duration;
-      }
-    }
+    // Sincronizar el progreso del vídeo fotograma a fotograma con el scroll en todos los dispositivos.
+    syncChoiceVideoToScroll(scrollProgress);
 
     // 3. CONTROL DE OPACIDAD AJUSTADO (Fundido encadenado / Cross-fade)
     const videoOpacity = THREE.MathUtils.clamp((scrollProgress - 0.2) / 0.6, 0.0, 1.0);
@@ -869,7 +909,7 @@ function animate() {
     }
 
     // Comprobación de hito interactivo (> 0.98)
-    if (scrollProgress >= 0.98) {
+    if (scrollProgress >= 0.98 && choiceVideoSyncedToScroll) {
       activatePillInteractions(true);
     } else {
       activatePillInteractions(false);
@@ -889,7 +929,7 @@ function animate() {
       camera.position.z -= 0.002;
     }
     if (videoMesh) {
-      videoMesh.position.z = camera.position.z - 4.0;
+      videoMesh.position.z = camera.position.z - VIDEO_PLANE_DISTANCE;
     }
 
     // Reciclado de lluvia
@@ -949,23 +989,27 @@ function onWindowResize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   composer.setSize(window.innerWidth, window.innerHeight);
 
-  if (videoMaterial) videoMaterial.uniforms.uPlaneRes.value.set(window.innerWidth, window.innerHeight);
-  if (bulletMaterial) bulletMaterial.uniforms.uPlaneRes.value.set(window.innerWidth, window.innerHeight);
-
-  // Recalcular dinámicamente el tamaño del plano de vídeo para que ocupe el 100% de la pantalla a 4.0 unidades
+  // Recalcular dinámicamente los planos: elección cuadrada en mobile, bullet full-viewport.
   if (videoMesh) {
-    const visibleHeight = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * 4.0;
-    const visibleWidth = visibleHeight * (window.innerWidth / window.innerHeight);
+    const choiceVideoSize = getChoiceVideoPlaneSize();
+    const viewportPlaneSize = getViewportPlaneSize();
+
+    if (videoMaterial) {
+      videoMaterial.uniforms.uPlaneRes.value.set(choiceVideoSize.width, choiceVideoSize.height);
+    }
+    if (bulletMaterial) {
+      bulletMaterial.uniforms.uPlaneRes.value.set(viewportPlaneSize.width, viewportPlaneSize.height);
+    }
     
     videoMesh.geometry.dispose(); // Liberar memoria
-    videoMesh.geometry = new THREE.PlaneGeometry(visibleWidth, visibleHeight);
+    videoMesh.geometry = new THREE.PlaneGeometry(choiceVideoSize.width, choiceVideoSize.height);
     
     if (bulletMesh) {
       bulletMesh.geometry.dispose();
-      bulletMesh.geometry = new THREE.PlaneGeometry(visibleWidth, visibleHeight);
+      bulletMesh.geometry = new THREE.PlaneGeometry(viewportPlaneSize.width, viewportPlaneSize.height);
     }
     
-    console.log(`Recalculated frustum plane size: ${visibleWidth.toFixed(2)} x ${visibleHeight.toFixed(2)}`);
+    console.log(`Recalculated choice plane size: ${choiceVideoSize.width.toFixed(2)} x ${choiceVideoSize.height.toFixed(2)}`);
   }
 
   console.log("Resize triggered. Size:", window.innerWidth, "x", window.innerHeight);
@@ -984,11 +1028,10 @@ if (entryBtn) {
     // Inicializar experiencia Three.js (crea elementos de vídeo e inicia bucle)
     init();
 
-    // Desbloqueo inmediato en iOS: play+pause SOLO del vídeo de píldoras (un vídeo a la vez)
+    // Preparar el video de pills sin reproducirlo; se controla solo con scroll.
     if (video) {
-      video.play().then(() => {
-        video.pause();
-      }).catch(err => console.warn("Error unlocking pills video:", err));
+      video.load();
+      video.pause();
     }
 
     // Ocultar overlay con transición CSS
