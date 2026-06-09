@@ -1,15 +1,26 @@
 import * as THREE from 'three';
-import { EffectComposer, RenderPass, EffectPass, BloomEffect, NoiseEffect, BlendFunction } from 'postprocessing';
+import { EffectComposer, RenderPass, EffectPass, BloomEffect, NoiseEffect, ChromaticAberrationEffect, VignetteEffect, DepthOfFieldEffect, BlendFunction } from 'postprocessing';
 
 let scene, camera, renderer, composer;
 let material, clock;
 let instancedMesh;
-let appState = 'MATRIX'; // MATRIX, CHOICE_MADE, GLITCH_OUT
+let appState = 'MATRIX'; // MATRIX, CHOICE_MADE, BULLET_TIME, END_RED, BLUE_SIM
 
 // Variables para el control de vídeo y scroll virtual
 let video, videoTexture, videoMaterial, videoMesh;
+let videoBullet, videoTextureBullet;
 let scrollProgress = 0.0;
 let targetScrollProgress = 0.0;
+
+// Caché para optimizar el reciclado de la lluvia de código
+let instancedPositions;
+
+// Efectos de postprocesado para rack focus y ajustes dinámicos
+let dofEffect;
+let bulletOrbitCenterZ = 0.0;
+
+// Detección de preferencia de movimiento reducido
+const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // Variables para la interacción y animación cinematográfica
 let targetHoverRed = 0.0;
@@ -20,7 +31,7 @@ let cameraSpeed = 0.002;
 let frameCount = 0;
 let interactionsActivated = false;
 
-console.log("main.js loaded");
+console.log("main.js loaded. Prefers reduced motion:", prefersReducedMotion);
 
 // 1. GENERADOR DE TEXTURAS PROCEDIMENTAL (Lluvia de Código)
 function createCharacterTexture() {
@@ -256,6 +267,25 @@ function init() {
   videoTexture.minFilter = THREE.LinearFilter;
   videoTexture.magFilter = THREE.LinearFilter;
 
+  // CREACIÓN PROGRAMÁTICA DEL VÍDEO DE BULLET-TIME (con fallback dinámico)
+  videoBullet = document.createElement('video');
+  videoBullet.src = '/bullet_time.mp4';
+  videoBullet.preload = 'auto';
+  videoBullet.muted = true;
+  videoBullet.playsInline = true;
+  videoBullet.setAttribute('playsinline', '');
+  videoBullet.setAttribute('webkit-playsinline', '');
+  videoBullet.loop = false;
+  videoBullet.addEventListener('error', () => {
+    console.warn("bullet_time.mp4 not found, falling back to /morfeo_pills_opt.mp4");
+    videoBullet.src = '/morfeo_pills_opt.mp4';
+  });
+  console.log("Programmatic videoBullet element initialized.");
+
+  videoTextureBullet = new THREE.VideoTexture(videoBullet);
+  videoTextureBullet.minFilter = THREE.LinearFilter;
+  videoTextureBullet.magFilter = THREE.LinearFilter;
+
   // 2. CÁLCULO DINÁMICO DEL FRUSTUM (Ajuste al 100% de pantalla a 4.0 unidades de distancia)
   const visibleHeight = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * 4.0;
   const visibleWidth = visibleHeight * (window.innerWidth / window.innerHeight);
@@ -325,13 +355,19 @@ function init() {
   const quaternion = new THREE.Quaternion();
   const scale = new THREE.Vector3(1, 1, 1);
 
-  for (let i = 0; i < count; i++) {
-    position.set(
-      (Math.random() - 0.5) * 16,
-      Math.random() * 12 - 2,
-      Math.random() * -12
-    );
+  // Inicializar caché de posiciones de columnas de lluvia en un Float32Array plano
+  instancedPositions = new Float32Array(count * 3);
 
+  for (let i = 0; i < count; i++) {
+    const x = (Math.random() - 0.5) * 16;
+    const y = Math.random() * 12 - 2;
+    const z = Math.random() * -12;
+
+    instancedPositions[i * 3 + 0] = x;
+    instancedPositions[i * 3 + 1] = y;
+    instancedPositions[i * 3 + 2] = z;
+
+    position.set(x, y, z);
     quaternion.setFromEuler(rotation);
     matrix.compose(position, quaternion, scale);
     instancedMesh.setMatrixAt(i, matrix);
@@ -339,7 +375,7 @@ function init() {
   
   instancedMesh.instanceMatrix.needsUpdate = true;
   scene.add(instancedMesh);
-  console.log("InstancedMesh added.");
+  console.log("InstancedMesh and cached positions array added.");
 
   // 4. PIPELINE DE POSTPROCESADO (La Lente)
   composer = new EffectComposer(renderer);
@@ -353,12 +389,38 @@ function init() {
   });
 
   const noiseEffect = new NoiseEffect({
-    blendFunction: Function.SCREEN,
+    blendFunction: BlendFunction.SCREEN,
     premultiply: true
   });
-  noiseEffect.blendMode.opacity.value = 0.18;
+  // Si se prefiere movimiento reducido, atenuamos el grano de película
+  noiseEffect.blendMode.opacity.value = prefersReducedMotion ? 0.04 : 0.18;
 
-  const effectPass = new EffectPass(camera, bloomEffect, noiseEffect);
+  // Aberración cromática sutil
+  const chromaEffect = new ChromaticAberrationEffect({
+    offset: prefersReducedMotion ? new THREE.Vector2(0.0002, 0.0002) : new THREE.Vector2(0.0015, 0.0015)
+  });
+
+  // Viñeta suave en los bordes de la cámara
+  const vignetteEffect = new VignetteEffect({
+    eskil: false,
+    offset: 0.25,
+    darkness: 0.5
+  });
+
+  // Profundidad de campo (rack focus) con enfoque dinámico
+  dofEffect = new DepthOfFieldEffect(camera, {
+    focusDistance: 0.02,
+    focalLength: prefersReducedMotion ? 0.01 : 0.05,
+    bokehScale: prefersReducedMotion ? 0.5 : 2.0,
+    height: 480
+  });
+
+  // Asegurar que la cámara se use como referencia inicial de foco
+  if (videoMesh) {
+    dofEffect.target.copy(videoMesh.position);
+  }
+
+  const effectPass = new EffectPass(camera, bloomEffect, noiseEffect, chromaEffect, vignetteEffect, dofEffect);
   composer.addPass(effectPass);
 
   // Inicializar controladores de interacción
@@ -371,12 +433,12 @@ function init() {
   animate();
 }
 
-// 3. SISTEMA DE SCROLL VIRTUAL CON INERCIA
+// 3. SISTEMA DE SCROLL VIRTUAL CON INERCIA (Habilitado en MATRIX y BULLET_TIME)
 function setupScrollController() {
   console.log("Setting up virtual scroll controller...");
   
   window.addEventListener('wheel', (e) => {
-    if (appState !== 'MATRIX') return;
+    if (appState !== 'MATRIX' && appState !== 'BULLET_TIME') return;
     
     const speed = 0.0008;
     targetScrollProgress = Math.max(0.0, Math.min(1.0, targetScrollProgress + e.deltaY * speed));
@@ -384,12 +446,12 @@ function setupScrollController() {
 
   let touchStartY = 0;
   window.addEventListener('touchstart', (e) => {
-    if (appState !== 'MATRIX') return;
+    if (appState !== 'MATRIX' && appState !== 'BULLET_TIME') return;
     touchStartY = e.touches[0].clientY;
   });
 
   window.addEventListener('touchmove', (e) => {
-    if (appState !== 'MATRIX') return;
+    if (appState !== 'MATRIX' && appState !== 'BULLET_TIME') return;
     const touchY = e.touches[0].clientY;
     const deltaY = touchStartY - touchY;
     touchStartY = touchY;
@@ -435,24 +497,97 @@ function setupUIEventListeners() {
 
     blueButton.addEventListener('click', () => {
       if (appState !== 'MATRIX' || !interactionsActivated) return;
-      console.log("Blue Pill chosen!");
-      appState = 'GLITCH_OUT';
-
-      targetHoverBlue = 15.0;
-      currentHoverBlue = 15.0;
-      material.uniforms.uHoverBlue.value = 15.0;
+      console.log("Blue Pill chosen! Commencing simulation...");
+      appState = 'BLUE_SIM';
 
       if (uiOverlay) {
         uiOverlay.style.opacity = '0';
         uiOverlay.style.pointerEvents = 'none';
       }
 
-      setTimeout(() => {
-        window.location.href = 'https://www.google.com';
-      }, 1000);
+      const blueOverlay = document.getElementById('blue-sim-overlay');
+      if (blueOverlay) {
+        blueOverlay.style.opacity = '1';
+        blueOverlay.style.pointerEvents = 'auto';
+        blueOverlay.classList.add('active');
+      }
+    });
+
+    // Listeners para restablecer la simulación en los overlays de finalización
+    document.querySelectorAll('.reset-button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        resetToMatrix();
+      });
     });
   } else {
     console.warn("UI Buttons not found in DOM.");
+  }
+}
+
+function resetToMatrix() {
+  console.log("Resetting simulation to MATRIX state...");
+  appState = 'MATRIX';
+  scrollProgress = 0.0;
+  targetScrollProgress = 0.0;
+  interactionsActivated = false;
+  cameraSpeed = 0.002;
+
+  // Restablecer posición y rotación de la cámara
+  camera.position.set(0, 0, 5);
+  camera.rotation.set(0, 0, 0);
+
+  // Reiniciar vídeos
+  if (video) {
+    video.currentTime = 0;
+  }
+  if (videoBullet) {
+    videoBullet.currentTime = 0;
+  }
+
+  // Restablecer uniforms de los materiales
+  if (videoMaterial) {
+    videoMaterial.uniforms.uVideoTexture.value = videoTexture;
+    videoMaterial.uniforms.uOpacity.value = 0.0;
+  }
+  if (material) {
+    material.uniforms.uMatrixOpacity.value = 1.0;
+    material.uniforms.uHoverRed.value = 0.0;
+    material.uniforms.uHoverBlue.value = 0.0;
+  }
+  currentHoverRed = 0.0;
+  currentHoverBlue = 0.0;
+  targetHoverRed = 0.0;
+  targetHoverBlue = 0.0;
+
+  // Reposicionar el plano de vídeo en su posición de inicio
+  if (videoMesh) {
+    videoMesh.position.set(0, 0.0, camera.position.z - 4.0);
+    videoMesh.rotation.set(0, 0, 0);
+  }
+
+  // Restablecer foco del dofEffect
+  if (dofEffect && videoMesh) {
+    dofEffect.target.copy(videoMesh.position);
+  }
+
+  // Ocultar overlays
+  const uiOverlay = document.getElementById('ui-overlay');
+  const blueOverlay = document.getElementById('blue-sim-overlay');
+  const redOverlay = document.getElementById('red-end-overlay');
+
+  if (uiOverlay) {
+    uiOverlay.style.opacity = '0';
+    uiOverlay.style.pointerEvents = 'none';
+  }
+  if (blueOverlay) {
+    blueOverlay.style.opacity = '0';
+    blueOverlay.style.pointerEvents = 'none';
+    blueOverlay.classList.remove('active');
+  }
+  if (redOverlay) {
+    redOverlay.style.opacity = '0';
+    redOverlay.style.pointerEvents = 'none';
+    redOverlay.classList.remove('active');
   }
 }
 
@@ -479,14 +614,100 @@ function activatePillInteractions(isActive) {
   }
 }
 
+function transitionToBulletTime() {
+  console.log("Transitioning to BULLET_TIME state...");
+  appState = 'BULLET_TIME';
+  scrollProgress = 0.0;
+  targetScrollProgress = 0.0;
+
+  // Iniciar el vídeo de bullet-time
+  if (videoBullet) {
+    videoBullet.currentTime = 0;
+  }
+
+  // Intercambiar textura en el material del plano
+  if (videoMaterial) {
+    videoMaterial.uniforms.uVideoTexture.value = videoTextureBullet;
+    videoMaterial.uniforms.uOpacity.value = 0.0;
+  }
+
+  // Colocar el plano delante de la cámara
+  if (videoMesh) {
+    videoMesh.position.set(0, 0.0, camera.position.z - 4.0);
+    videoMesh.rotation.set(0, 0, 0);
+  }
+
+  // Desvanecer lluvia por completo al inicio
+  if (material) {
+    material.uniforms.uMatrixOpacity.value = 0.2;
+  }
+
+  bulletOrbitCenterZ = camera.position.z - 4.0;
+}
+
+function transitionToEndRed() {
+  console.log("Transitioning to END_RED state...");
+  appState = 'END_RED';
+
+  // Mostrar el overlay rojo final
+  const redOverlay = document.getElementById('red-end-overlay');
+  if (redOverlay) {
+    redOverlay.style.opacity = '1';
+    redOverlay.style.pointerEvents = 'auto';
+    redOverlay.classList.add('active');
+  }
+}
+
+function recycleRainColumns() {
+  if (instancedMesh && instancedPositions) {
+    const tempMatrix = new THREE.Matrix4();
+    const tempPosition = new THREE.Vector3();
+    const tempQuaternion = new THREE.Quaternion();
+    const tempScale = new THREE.Vector3(1, 1, 1);
+    let positionsChanged = false;
+
+    for (let i = 0; i < instancedMesh.count; i++) {
+      let x = instancedPositions[i * 3 + 0];
+      let y = instancedPositions[i * 3 + 1];
+      let z = instancedPositions[i * 3 + 2];
+
+      if (z > camera.position.z + 0.5) {
+        z = camera.position.z - 12.0;
+        x = (Math.random() - 0.5) * 16;
+        y = Math.random() * 12 - 2;
+
+        instancedPositions[i * 3 + 0] = x;
+        instancedPositions[i * 3 + 1] = y;
+        instancedPositions[i * 3 + 2] = z;
+
+        tempPosition.set(x, y, z);
+        tempMatrix.compose(tempPosition, tempQuaternion, tempScale);
+        instancedMesh.setMatrixAt(i, tempMatrix);
+        positionsChanged = true;
+      }
+    }
+    if (positionsChanged) {
+      instancedMesh.instanceMatrix.needsUpdate = true;
+    }
+  }
+}
+
 function animate() {
   requestAnimationFrame(animate);
 
-  let elapsedTime = clock.getElapsedTime();
+  const elapsedTime = clock.getElapsedTime();
 
-  if (appState === 'GLITCH_OUT') {
-    elapsedTime = clock.elapsedTime; 
-  } else {
+  // Actualizar el tiempo global en el material de lluvia en todo momento
+  if (material) {
+    material.uniforms.uTime.value = elapsedTime;
+  }
+
+  // Rack focus dinámico con DepthOfField
+  if (dofEffect && videoMesh) {
+    dofEffect.target.copy(videoMesh.position);
+  }
+
+  if (appState === 'MATRIX') {
     // Calcular suavizado de scroll mediante lerp
     scrollProgress += (targetScrollProgress - scrollProgress) * 0.05;
 
@@ -520,44 +741,87 @@ function animate() {
     if (material) {
       material.uniforms.uHoverRed.value = currentHoverRed;
       material.uniforms.uHoverBlue.value = currentHoverBlue;
-      material.uniforms.uTime.value = elapsedTime;
     }
 
-    // Animaciones de cámara y plano de vídeo según el estado
-    if (appState === 'MATRIX') {
+    // Dolly de la cámara en Z
+    if (!prefersReducedMotion) {
       camera.position.z -= 0.002;
-      
-      // Anclar el plano de vídeo a una distancia fija en Z respecto a la cámara (4.0 unidades al frente)
-      if (videoMesh) {
-        videoMesh.position.z = camera.position.z - 4.0;
-      }
-    } else if (appState === 'CHOICE_MADE') {
+    }
+    if (videoMesh) {
+      videoMesh.position.z = camera.position.z - 4.0;
+    }
+
+    // Reciclado de lluvia
+    recycleRainColumns();
+
+  } else if (appState === 'CHOICE_MADE') {
+    if (prefersReducedMotion) {
+      transitionToBulletTime();
+    } else {
       // Aceleración exponencial (atravesamos el plano del vídeo)
       cameraSpeed *= 1.15;
       camera.position.z -= cameraSpeed;
+
+      // Al cruzar el plano (cámara pasa la posición Z estática del plano), transicionar
+      if (videoMesh && camera.position.z <= videoMesh.position.z) {
+        transitionToBulletTime();
+      }
+    }
+    
+    // Reciclado de lluvia
+    recycleRainColumns();
+
+  } else if (appState === 'BULLET_TIME') {
+    // Scroll conduce el orbital y la reproducción
+    scrollProgress += (targetScrollProgress - scrollProgress) * 0.05;
+
+    if (videoBullet && !isNaN(videoBullet.duration) && videoBullet.duration > 0) {
+      videoBullet.currentTime = scrollProgress * videoBullet.duration;
     }
 
-    // Reciclado infinito de columnas de lluvia en Z
-    if (instancedMesh) {
-      const tempMatrix = new THREE.Matrix4();
-      const tempPosition = new THREE.Vector3();
-      const tempQuaternion = new THREE.Quaternion();
-      const tempScale = new THREE.Vector3();
+    // Configurar opacidad del vídeo de bullet-time
+    let videoOpacity = 1.0;
+    if (scrollProgress < 0.2) {
+      videoOpacity = scrollProgress / 0.2;
+    } else if (scrollProgress > 0.8) {
+      videoOpacity = THREE.MathUtils.clamp(1.0 - (scrollProgress - 0.8) / 0.15, 0.0, 1.0);
+    }
+    if (videoMaterial) {
+      videoMaterial.uniforms.uOpacity.value = videoOpacity;
+    }
 
-      for (let i = 0; i < instancedMesh.count; i++) {
-        instancedMesh.getMatrixAt(i, tempMatrix);
-        tempMatrix.decompose(tempPosition, tempQuaternion, tempScale);
+    // Desvanecer lluvia Matrix
+    if (material) {
+      material.uniforms.uMatrixOpacity.value = THREE.MathUtils.clamp(0.2 - scrollProgress, 0.0, 0.2);
+    }
 
-        if (tempPosition.z > camera.position.z + 0.5) {
-          tempPosition.z = camera.position.z - 12.0;
-          tempPosition.x = (Math.random() - 0.5) * 16;
-          tempPosition.y = Math.random() * 12 - 2;
+    // Giro orbital alrededor del plano
+    const angle = (scrollProgress - 0.5) * 1.2;
+    const radius = 4.0;
+    camera.position.x = Math.sin(angle) * radius;
+    camera.position.z = bulletOrbitCenterZ + Math.cos(angle) * radius;
+    camera.lookAt(0, 0.0, bulletOrbitCenterZ);
 
-          tempMatrix.compose(tempPosition, tempQuaternion, tempScale);
-          instancedMesh.setMatrixAt(i, tempMatrix);
-        }
-      }
-      instancedMesh.instanceMatrix.needsUpdate = true;
+    if (videoMesh) {
+      videoMesh.position.set(0, 0, bulletOrbitCenterZ);
+      videoMesh.lookAt(camera.position);
+    }
+
+    // Al terminar de hacer scrub
+    if (scrollProgress >= 0.98) {
+      transitionToEndRed();
+    }
+
+    // Reciclado de lluvia
+    recycleRainColumns();
+
+  } else if (appState === 'BLUE_SIM' || appState === 'END_RED') {
+    // En las pantallas de finalización, desvanecemos todo en WebGL
+    if (videoMaterial) {
+      videoMaterial.uniforms.uOpacity.value = 0.0;
+    }
+    if (material) {
+      material.uniforms.uMatrixOpacity.value = 0.0;
     }
   }
 

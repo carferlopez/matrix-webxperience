@@ -72,39 +72,63 @@ html, body {
 .pill-button {
   pointer-events: auto;
   cursor: pointer;
-  background: rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  color: #ffffff;
+  background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.02) 60%, rgba(0, 0, 0, 0.45) 100%);
+  backdrop-filter: blur(14px) saturate(120%);
+  -webkit-backdrop-filter: blur(14px) saturate(120%);
+  color: rgba(255, 255, 255, 0.9);
   font-family: inherit;
   font-size: 0.95rem;
-  font-weight: 500;
-  letter-spacing: 0.1em;
-  padding: 14px 28px;
-  border-radius: 4px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  padding: 15px 30px;
+  border-radius: 50px; /* Forma de píldora perfectamente redondeada */
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 
+    inset 1px 1px 3px rgba(255, 255, 255, 0.35), 
+    inset -1px -1px 3px rgba(0, 0, 0, 0.6), 
+    0 4px 15px rgba(0, 0, 0, 0.55);
   outline: none;
   transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  min-height: 48px; /* Target táctil >= 44px */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pill-button:focus-visible {
+  outline: 2px solid #00ff41;
+  outline-offset: 4px;
 }
 
 .pill-button.blue {
-  border: 1px solid rgba(0, 140, 255, 0.45);
+  border: 1px solid rgba(0, 140, 255, 0.35);
 }
 
 .pill-button.blue:hover {
-  background: rgba(0, 120, 255, 0.15);
-  border-color: rgba(0, 140, 255, 1);
-  box-shadow: 0 0 25px rgba(0, 140, 255, 0.55), inset 0 0 10px rgba(0, 140, 255, 0.2);
+  background: radial-gradient(circle at 30% 30%, rgba(0, 140, 255, 0.35), rgba(0, 70, 255, 0.1) 60%, rgba(0, 0, 0, 0.65) 100%);
+  border-color: rgba(0, 140, 255, 0.85);
+  box-shadow: 
+    0 0 25px rgba(0, 140, 255, 0.65), 
+    inset 0 0 10px rgba(0, 140, 255, 0.35), 
+    inset 1px 1px 3px rgba(255, 255, 255, 0.45), 
+    inset -1px -1px 3px rgba(0, 0, 0, 0.6);
+  text-shadow: 0 0 8px rgba(0, 140, 255, 0.8);
   transform: translateY(-2px);
 }
 
 .pill-button.red {
-  border: 1px solid rgba(255, 50, 50, 0.45);
+  border: 1px solid rgba(255, 50, 50, 0.35);
 }
 
 .pill-button.red:hover {
-  background: rgba(255, 40, 40, 0.15);
-  border-color: rgba(255, 50, 50, 1);
-  box-shadow: 0 0 25px rgba(255, 50, 50, 0.55), inset 0 0 10px rgba(255, 50, 50, 0.2);
+  background: radial-gradient(circle at 30% 30%, rgba(255, 50, 50, 0.35), rgba(200, 30, 30, 0.1) 60%, rgba(0, 0, 0, 0.65) 100%);
+  border-color: rgba(255, 50, 50, 0.85);
+  box-shadow: 
+    0 0 25px rgba(255, 50, 50, 0.65), 
+    inset 0 0 10px rgba(255, 50, 50, 0.35), 
+    inset 1px 1px 3px rgba(255, 255, 255, 0.45), 
+    inset -1px -1px 3px rgba(0, 0, 0, 0.6);
+  text-shadow: 0 0 8px rgba(255, 50, 50, 0.8);
   transform: translateY(-2px);
 }
 
@@ -139,5 +163,186 @@ html, body {
   .pills-container {
     flex-direction: column;
     gap: 1.2rem;
+  }
+}
+
+/* --- OVERLAYS DE FINALIZACIÓN --- */
+
+#blue-sim-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: #f0f0f0;
+  color: #333333;
+  z-index: 20;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 2s ease-in-out;
+}
+
+#blue-sim-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+  animation: simGlitch 6s infinite;
+}
+
+.blue-sim-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2rem;
+  padding: 2rem;
+}
+
+.blue-sim-text {
+  font-family: inherit;
+  font-size: 1.5rem;
+  letter-spacing: 0.1em;
+  font-weight: 500;
+  line-height: 1.6;
+}
+
+.blue-sim-stamp {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.85rem;
+  font-weight: bold;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: #888888;
+  border: 1px solid #cccccc;
+  padding: 6px 16px;
+  border-radius: 2px;
+}
+
+#red-end-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: #000000;
+  color: #ffffff;
+  z-index: 20;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 2.5s ease-in-out;
+}
+
+#red-end-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.red-end-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2rem;
+  padding: 2rem;
+}
+
+.red-end-text {
+  font-family: 'Libre Baskerville', 'Times New Roman', Georgia, serif;
+  font-size: 2.2rem;
+  font-weight: 700;
+  letter-spacing: 0.5em;
+  text-indent: 0.5em;
+  text-transform: uppercase;
+  text-shadow: 
+    0 0 4px rgba(255, 255, 255, 0.8),
+    0 0 10px #00ff41,
+    0 0 25px #00ff41;
+}
+
+.red-end-stamp {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.8rem;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: #00a028;
+  text-shadow: 0 0 5px rgba(0, 255, 65, 0.35);
+  border: 1px dashed rgba(0, 255, 65, 0.4);
+  padding: 6px 16px;
+  border-radius: 2px;
+}
+
+.reset-button {
+  margin-top: 2rem;
+  padding: 12px 24px;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.85rem;
+  font-weight: bold;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: inherit;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: all 0.3s ease;
+  pointer-events: auto;
+}
+
+.reset-button:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.05);
+}
+
+#red-end-overlay .reset-button:hover {
+  background: rgba(0, 255, 65, 0.1);
+  box-shadow: 0 0 15px rgba(0, 255, 65, 0.4);
+}
+
+.reset-button:focus-visible {
+  outline: 2px solid #00ff41;
+  outline-offset: 4px;
+}
+
+@keyframes simGlitch {
+  0%, 98.2%, 100% {
+    background-color: #f0f0f0;
+    color: #333333;
+    transform: none;
+    filter: none;
+  }
+  98.6% {
+    background-color: #0d0d0d;
+    color: #00ff41;
+    transform: skewX(-12deg) scaleY(0.95);
+    filter: invert(0.1);
+  }
+  99.0% {
+    background-color: #000000;
+    color: #00ff3c;
+    transform: skewX(15deg) scaleY(1.05);
+    filter: invert(0) hue-rotate(90deg) contrast(150%);
+  }
+  99.4% {
+    background-color: #f0f0f0;
+    color: #333333;
+    transform: none;
+    filter: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .red-end-text {
+    font-size: 1.4rem;
+    letter-spacing: 0.3em;
+    text-indent: 0.3em;
+  }
+  .blue-sim-text {
+    font-size: 1.1rem;
   }
 }
