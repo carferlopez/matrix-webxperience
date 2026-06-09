@@ -6,6 +6,11 @@ let material, clock;
 let instancedMesh;
 let appState = 'MATRIX'; // MATRIX, CHOICE_MADE, GLITCH_OUT
 
+// Variables para el control de vídeo y scroll virtual
+let video, videoTexture, videoMaterial, videoMesh;
+let scrollProgress = 0.0;
+let targetScrollProgress = 0.0;
+
 // Variables para la interacción y animación cinematográfica
 let targetHoverRed = 0.0;
 let targetHoverBlue = 0.0;
@@ -206,6 +211,36 @@ function init() {
   // Inicializar reloj
   clock = new THREE.Clock();
 
+  // 2. CONFIGURACIÓN DEL MOTOR DE VÍDEO
+  video = document.getElementById('morpheus-video');
+  if (video) {
+    console.log("HTML video element found.");
+    // Forzar carga de metadatos de forma segura
+    video.load();
+
+    videoTexture = new THREE.VideoTexture(video);
+    videoTexture.minFilter = THREE.LinearFilter;
+    videoTexture.magFilter = THREE.LinearFilter;
+
+    // Plano centrado ligeramente detrás de la lluvia de código frontal
+    const videoGeometry = new THREE.PlaneGeometry(3.2, 1.8);
+    videoMaterial = new THREE.MeshBasicMaterial({
+      map: videoTexture,
+      transparent: true,
+      opacity: 0.0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+
+    videoMesh = new THREE.Mesh(videoGeometry, videoMaterial);
+    // Posición inicial relativa a la cámara
+    videoMesh.position.set(0, 0.0, camera.position.z - 6.5);
+    scene.add(videoMesh);
+    console.log("Video plane mesh added to scene.");
+  } else {
+    console.error("Video element #morpheus-video not found in HTML!");
+  }
+
   // Generar textura de caracteres
   const characterTexture = createCharacterTexture();
 
@@ -286,13 +321,42 @@ function init() {
   const effectPass = new EffectPass(camera, bloomEffect, noiseEffect);
   composer.addPass(effectPass);
 
-  // Setup Event Listeners para Píldoras
+  // Inicializar controladores de interacción
+  setupScrollController();
   setupUIEventListeners();
 
   window.addEventListener('resize', onWindowResize);
   
   console.log("Starting animation loop...");
   animate();
+}
+
+function setupScrollController() {
+  console.log("Setting up virtual scroll controller...");
+  
+  window.addEventListener('wheel', (e) => {
+    if (appState !== 'MATRIX') return;
+    
+    // Sensibilidad del scroll
+    const speed = 0.0008;
+    targetScrollProgress = Math.max(0.0, Math.min(1.0, targetScrollProgress + e.deltaY * speed));
+  });
+
+  let touchStartY = 0;
+  window.addEventListener('touchstart', (e) => {
+    if (appState !== 'MATRIX') return;
+    touchStartY = e.touches[0].clientY;
+  });
+
+  window.addEventListener('touchmove', (e) => {
+    if (appState !== 'MATRIX') return;
+    const touchY = e.touches[0].clientY;
+    const deltaY = touchStartY - touchY;
+    touchStartY = touchY;
+
+    const speed = 0.0025;
+    targetScrollProgress = Math.max(0.0, Math.min(1.0, targetScrollProgress + deltaY * speed));
+  });
 }
 
 function setupUIEventListeners() {
@@ -316,10 +380,11 @@ function setupUIEventListeners() {
       if (appState !== 'MATRIX') return;
       console.log("Red Pill chosen!");
       appState = 'CHOICE_MADE';
-      cameraSpeed = 0.002; // Reiniciar velocidad inicial
+      cameraSpeed = 0.002;
 
       if (uiOverlay) {
         uiOverlay.style.opacity = '0';
+        uiOverlay.style.pointerEvents = 'none';
       }
     });
 
@@ -336,6 +401,7 @@ function setupUIEventListeners() {
 
       if (uiOverlay) {
         uiOverlay.style.opacity = '0';
+        uiOverlay.style.pointerEvents = 'none';
       }
 
       setTimeout(() => {
@@ -353,10 +419,35 @@ function animate() {
   let elapsedTime = clock.getElapsedTime();
 
   if (appState === 'GLITCH_OUT') {
-    // Congelar reloj (congelar uTime) para dar sensación de estática
+    // Congelar reloj (congelar uTime)
     elapsedTime = clock.elapsedTime; 
   } else {
-    // Lerp suave de los estados de Hover
+    // 3. CONTROL POR SCROLL VIRTUAL SINCRONIZADO
+    scrollProgress += (targetScrollProgress - scrollProgress) * 0.05;
+
+    // Sincronizar el progreso del vídeo (currentTime) de forma matemática
+    if (video && !isNaN(video.duration) && video.duration > 0) {
+      video.currentTime = scrollProgress * video.duration;
+    }
+
+    // Lerp de opacidad del vídeo: 0.0 en scroll 0.0, opaco 1.0 en scroll 0.8
+    if (videoMaterial) {
+      videoMaterial.opacity = Math.min(1.0, scrollProgress / 0.8);
+    }
+
+    // 4. HITO FINAL INTERACTIVO (Las Píldoras)
+    const uiOverlay = document.getElementById('ui-overlay');
+    if (uiOverlay && appState === 'MATRIX') {
+      if (scrollProgress >= 0.95) {
+        uiOverlay.style.opacity = '1';
+        uiOverlay.style.pointerEvents = 'auto';
+      } else {
+        uiOverlay.style.opacity = '0';
+        uiOverlay.style.pointerEvents = 'none';
+      }
+    }
+
+    // Lerp suave de los estados de Hover para los uniforms
     currentHoverRed += (targetHoverRed - currentHoverRed) * 0.1;
     currentHoverBlue += (targetHoverBlue - currentHoverBlue) * 0.1;
 
@@ -366,12 +457,18 @@ function animate() {
       material.uniforms.uTime.value = elapsedTime;
     }
 
-    // Animaciones de cámara según el estado
+    // Animaciones de cámara y vídeo según el estado
     if (appState === 'MATRIX') {
       // Dolly-in lento e infinito
       camera.position.z -= 0.002;
+      
+      // Anclar el plano de vídeo a una distancia fija en Z respecto a la cámara
+      // Esto mantiene el encuadre del vídeo mientras el código vuela de fondo
+      if (videoMesh) {
+        videoMesh.position.z = camera.position.z - 6.5;
+      }
     } else if (appState === 'CHOICE_MADE') {
-      // Aceleración exponencial
+      // Aceleración exponencial (atravesamos el plano del vídeo)
       cameraSpeed *= 1.15;
       camera.position.z -= cameraSpeed;
     }
@@ -387,11 +484,10 @@ function animate() {
         instancedMesh.getMatrixAt(i, tempMatrix);
         tempMatrix.decompose(tempPosition, tempQuaternion, tempScale);
 
-        // Si la columna pasa por detrás de la cámara (+ margen de 0.5)
+        // Si la columna pasa por detrás de la cámara
         if (tempPosition.z > camera.position.z + 0.5) {
           // Reposicionar al fondo en Z relativo a la cámara
           tempPosition.z = camera.position.z - 12.0;
-          // Re-aleatorizar X e Y para evitar patrones obvios
           tempPosition.x = (Math.random() - 0.5) * 16;
           tempPosition.y = Math.random() * 12 - 2;
 
@@ -405,7 +501,7 @@ function animate() {
 
   frameCount++;
   if (frameCount % 100 === 0) {
-    console.log(`Render loop running... State: ${appState}, Camera Z: ${camera.position.z.toFixed(3)}`);
+    console.log(`Render loop... State: ${appState}, ScrollProgress: ${scrollProgress.toFixed(3)}, Camera Z: ${camera.position.z.toFixed(3)}`);
   }
 
   composer.render();
