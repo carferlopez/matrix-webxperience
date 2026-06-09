@@ -8,7 +8,7 @@ let appState = 'MATRIX'; // MATRIX, CHOICE_MADE, BULLET_TIME, END_RED, BLUE_SIM
 
 // Variables para el control de vídeo y scroll virtual
 let video, videoTexture, videoMaterial, videoMesh;
-let videoBullet, videoTextureBullet;
+let bulletVideo, bulletTexture, bulletMaterial, bulletMesh;
 let scrollProgress = 0.0;
 let targetScrollProgress = 0.0;
 
@@ -17,7 +17,12 @@ let instancedPositions;
 
 // Efectos de postprocesado para rack focus y ajustes dinámicos
 let dofEffect;
-let bulletOrbitCenterZ = 0.0;
+
+// Control de opacidades para la transición fluida
+let bulletVideoLoaded = false;
+let transitionOpacityMatrix = 1.0;
+let transitionOpacityVideo = 0.0;
+let transitionOpacityBullet = 0.0;
 
 // Detección de preferencia de movimiento reducido
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -267,24 +272,29 @@ function init() {
   videoTexture.minFilter = THREE.LinearFilter;
   videoTexture.magFilter = THREE.LinearFilter;
 
-  // CREACIÓN PROGRAMÁTICA DEL VÍDEO DE BULLET-TIME (con fallback dinámico)
-  videoBullet = document.createElement('video');
-  videoBullet.src = '/bullet_time.mp4';
-  videoBullet.preload = 'auto';
-  videoBullet.muted = true;
-  videoBullet.playsInline = true;
-  videoBullet.setAttribute('playsinline', '');
-  videoBullet.setAttribute('webkit-playsinline', '');
-  videoBullet.loop = false;
-  videoBullet.addEventListener('error', () => {
+  // CREACIÓN PROGRAMÁTICA DEL VÍDEO DE BULLET-TIME (con fallback dinámico y audio)
+  bulletVideo = document.createElement('video');
+  bulletVideo.src = '/bullet_time.mp4';
+  bulletVideo.preload = 'auto';
+  bulletVideo.muted = false; // Permitimos audio porque se reproduce tras el click del usuario
+  bulletVideo.playsInline = true;
+  bulletVideo.setAttribute('playsinline', '');
+  bulletVideo.setAttribute('webkit-playsinline', '');
+  bulletVideo.loop = false;
+  bulletVideo.addEventListener('error', () => {
     console.warn("bullet_time.mp4 not found, falling back to /morfeo_pills_opt.mp4");
-    videoBullet.src = '/morfeo_pills_opt.mp4';
+    bulletVideo.src = '/morfeo_pills_opt.mp4';
+    bulletVideo.muted = true; // El fallback se reproduce silenciado
   });
-  console.log("Programmatic videoBullet element initialized.");
+  bulletVideo.addEventListener('ended', () => {
+    console.log("bulletVideo ended, transitioning to END_RED");
+    transitionToEndRed();
+  });
+  console.log("Programmatic bulletVideo element initialized.");
 
-  videoTextureBullet = new THREE.VideoTexture(videoBullet);
-  videoTextureBullet.minFilter = THREE.LinearFilter;
-  videoTextureBullet.magFilter = THREE.LinearFilter;
+  bulletTexture = new THREE.VideoTexture(bulletVideo);
+  bulletTexture.minFilter = THREE.LinearFilter;
+  bulletTexture.magFilter = THREE.LinearFilter;
 
   // 2. CÁLCULO DINÁMICO DEL FRUSTUM (Ajuste al 100% de pantalla a 4.0 unidades de distancia)
   const visibleHeight = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * 4.0;
@@ -306,10 +316,28 @@ function init() {
   });
 
   videoMesh = new THREE.Mesh(videoGeometry, videoMaterial);
-  // Posición inicial: Z: 1.0 (a una distancia de 4 unidades de la cámara en Z: 5)
   videoMesh.position.set(0, 0.0, camera.position.z - 4.0);
   scene.add(videoMesh);
   console.log("Video plane mesh loaded at Z:", videoMesh.position.z);
+
+  // CREACIÓN DEL PLANO Y MATERIAL DE BULLET-TIME (Reutilizando shaders)
+  bulletMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+      uVideoTexture: { value: bulletTexture },
+      uOpacity: { value: 0.0 }
+    },
+    vertexShader: videoVertexShader,
+    fragmentShader: videoFragmentShader,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+
+  const bulletGeometry = new THREE.PlaneGeometry(visibleWidth, visibleHeight);
+  bulletMesh = new THREE.Mesh(bulletGeometry, bulletMaterial);
+  bulletMesh.position.set(0, 0.0, camera.position.z - 4.0);
+  scene.add(bulletMesh);
+  console.log("Bullet plane mesh loaded at Z:", bulletMesh.position.z);
 
   // Generar textura de caracteres (Código Matrix)
   const characterTexture = createCharacterTexture();
@@ -485,9 +513,24 @@ function setupUIEventListeners() {
 
     redButton.addEventListener('click', () => {
       if (appState !== 'MATRIX' || !interactionsActivated) return;
-      console.log("Red Pill chosen!");
-      appState = 'CHOICE_MADE';
-      cameraSpeed = 0.002;
+      console.log("Red Pill chosen! Transitioning to BULLET_TIME climax...");
+      appState = 'BULLET_TIME';
+
+      // Capturar opacidades actuales para lerp
+      transitionOpacityMatrix = material ? material.uniforms.uMatrixOpacity.value : 1.0;
+      transitionOpacityVideo = videoMaterial ? videoMaterial.uniforms.uOpacity.value : 0.0;
+      transitionOpacityBullet = 0.0;
+
+      // Anclar la posición del plano de bullet time a 4 unidades frente a la cámara actual
+      if (bulletMesh) {
+        bulletMesh.position.set(0, 0, camera.position.z - 4.0);
+      }
+      if (videoMesh) {
+        // se queda estático en su Z actual para crear efecto de punch-through
+      }
+
+      // Reproducir bulletVideo de manera robusta
+      playBulletVideo();
 
       if (uiOverlay) {
         uiOverlay.style.opacity = '0';
@@ -524,6 +567,21 @@ function setupUIEventListeners() {
   }
 }
 
+function playBulletVideo() {
+  if (!bulletVideo) return;
+  const playPromise = bulletVideo.play();
+  if (playPromise !== undefined) {
+    playPromise.catch(error => {
+      console.warn("Bullet video play delayed: waiting for buffer...", error);
+      const onCanPlay = () => {
+        bulletVideo.play().catch(e => console.error("Error playing bullet video after buffering:", e));
+        bulletVideo.removeEventListener('canplaythrough', onCanPlay);
+      };
+      bulletVideo.addEventListener('canplaythrough', onCanPlay);
+    });
+  }
+}
+
 function resetToMatrix() {
   console.log("Resetting simulation to MATRIX state...");
   appState = 'MATRIX';
@@ -531,6 +589,12 @@ function resetToMatrix() {
   targetScrollProgress = 0.0;
   interactionsActivated = false;
   cameraSpeed = 0.002;
+  bulletVideoLoaded = false;
+
+  // Restablecer opacidades de transición
+  transitionOpacityMatrix = 1.0;
+  transitionOpacityVideo = 0.0;
+  transitionOpacityBullet = 0.0;
 
   // Restablecer posición y rotación de la cámara
   camera.position.set(0, 0, 5);
@@ -540,14 +604,17 @@ function resetToMatrix() {
   if (video) {
     video.currentTime = 0;
   }
-  if (videoBullet) {
-    videoBullet.currentTime = 0;
+  if (bulletVideo) {
+    bulletVideo.pause();
+    bulletVideo.currentTime = 0;
   }
 
   // Restablecer uniforms de los materiales
   if (videoMaterial) {
-    videoMaterial.uniforms.uVideoTexture.value = videoTexture;
     videoMaterial.uniforms.uOpacity.value = 0.0;
+  }
+  if (bulletMaterial) {
+    bulletMaterial.uniforms.uOpacity.value = 0.0;
   }
   if (material) {
     material.uniforms.uMatrixOpacity.value = 1.0;
@@ -559,10 +626,14 @@ function resetToMatrix() {
   targetHoverRed = 0.0;
   targetHoverBlue = 0.0;
 
-  // Reposicionar el plano de vídeo en su posición de inicio
+  // Reposicionar los planos de vídeo en su posición de inicio
   if (videoMesh) {
     videoMesh.position.set(0, 0.0, camera.position.z - 4.0);
     videoMesh.rotation.set(0, 0, 0);
+  }
+  if (bulletMesh) {
+    bulletMesh.position.set(0, 0.0, camera.position.z - 4.0);
+    bulletMesh.rotation.set(0, 0, 0);
   }
 
   // Restablecer foco del dofEffect
@@ -612,37 +683,6 @@ function activatePillInteractions(isActive) {
       interactionsActivated = false;
     }
   }
-}
-
-function transitionToBulletTime() {
-  console.log("Transitioning to BULLET_TIME state...");
-  appState = 'BULLET_TIME';
-  scrollProgress = 0.0;
-  targetScrollProgress = 0.0;
-
-  // Iniciar el vídeo de bullet-time
-  if (videoBullet) {
-    videoBullet.currentTime = 0;
-  }
-
-  // Intercambiar textura en el material del plano
-  if (videoMaterial) {
-    videoMaterial.uniforms.uVideoTexture.value = videoTextureBullet;
-    videoMaterial.uniforms.uOpacity.value = 0.0;
-  }
-
-  // Colocar el plano delante de la cámara
-  if (videoMesh) {
-    videoMesh.position.set(0, 0.0, camera.position.z - 4.0);
-    videoMesh.rotation.set(0, 0, 0);
-  }
-
-  // Desvanecer lluvia por completo al inicio
-  if (material) {
-    material.uniforms.uMatrixOpacity.value = 0.2;
-  }
-
-  bulletOrbitCenterZ = camera.position.z - 4.0;
 }
 
 function transitionToEndRed() {
@@ -703,8 +743,12 @@ function animate() {
   }
 
   // Rack focus dinámico con DepthOfField
-  if (dofEffect && videoMesh) {
-    dofEffect.target.copy(videoMesh.position);
+  if (dofEffect) {
+    if (appState === 'BULLET_TIME' && bulletMesh) {
+      dofEffect.target.copy(bulletMesh.position);
+    } else if (videoMesh) {
+      dofEffect.target.copy(videoMesh.position);
+    }
   }
 
   if (appState === 'MATRIX') {
@@ -725,6 +769,13 @@ function animate() {
     }
     if (material) {
       material.uniforms.uMatrixOpacity.value = matrixOpacity;
+    }
+
+    // Precarga cuando scrollProgress > 0.9
+    if (scrollProgress > 0.9 && !bulletVideoLoaded) {
+      bulletVideo.load();
+      bulletVideoLoaded = true;
+      console.log("bulletVideo preloaded via load()");
     }
 
     // Comprobación de hito interactivo (> 0.98)
@@ -772,45 +823,28 @@ function animate() {
     recycleRainColumns();
 
   } else if (appState === 'BULLET_TIME') {
-    // Scroll conduce el orbital y la reproducción
-    scrollProgress += (targetScrollProgress - scrollProgress) * 0.05;
+    // Lerp de opacidades para la transición fluida
+    transitionOpacityMatrix += (0.0 - transitionOpacityMatrix) * 0.05;
+    transitionOpacityVideo += (0.0 - transitionOpacityVideo) * 0.05;
+    transitionOpacityBullet += (1.0 - transitionOpacityBullet) * 0.05;
 
-    if (videoBullet && !isNaN(videoBullet.duration) && videoBullet.duration > 0) {
-      videoBullet.currentTime = scrollProgress * videoBullet.duration;
-    }
-
-    // Configurar opacidad del vídeo de bullet-time
-    let videoOpacity = 1.0;
-    if (scrollProgress < 0.2) {
-      videoOpacity = scrollProgress / 0.2;
-    } else if (scrollProgress > 0.8) {
-      videoOpacity = THREE.MathUtils.clamp(1.0 - (scrollProgress - 0.8) / 0.15, 0.0, 1.0);
+    if (material) {
+      material.uniforms.uMatrixOpacity.value = transitionOpacityMatrix;
     }
     if (videoMaterial) {
-      videoMaterial.uniforms.uOpacity.value = videoOpacity;
+      videoMaterial.uniforms.uOpacity.value = transitionOpacityVideo;
+    }
+    if (bulletMaterial) {
+      bulletMaterial.uniforms.uOpacity.value = transitionOpacityBullet;
     }
 
-    // Desvanecer lluvia Matrix
-    if (material) {
-      material.uniforms.uMatrixOpacity.value = THREE.MathUtils.clamp(0.2 - scrollProgress, 0.0, 0.2);
+    // Leve punch-through de la cámara durante el fundido (se detiene cuando se completa la transición)
+    if (!prefersReducedMotion && transitionOpacityBullet < 0.99) {
+      camera.position.z -= 0.015;
     }
 
-    // Giro orbital alrededor del plano
-    const angle = (scrollProgress - 0.5) * 1.2;
-    const radius = 4.0;
-    camera.position.x = Math.sin(angle) * radius;
-    camera.position.z = bulletOrbitCenterZ + Math.cos(angle) * radius;
-    camera.lookAt(0, 0.0, bulletOrbitCenterZ);
-
-    if (videoMesh) {
-      videoMesh.position.set(0, 0, bulletOrbitCenterZ);
-      videoMesh.lookAt(camera.position);
-    }
-
-    // Al terminar de hacer scrub
-    if (scrollProgress >= 0.98) {
-      transitionToEndRed();
-    }
+    // La VideoTexture se actualiza de forma automática con la reproducción de bulletVideo;
+    // no se toca currentTime para que se reproduzca de forma fluida.
 
     // Reciclado de lluvia
     recycleRainColumns();
@@ -819,6 +853,9 @@ function animate() {
     // En las pantallas de finalización, desvanecemos todo en WebGL
     if (videoMaterial) {
       videoMaterial.uniforms.uOpacity.value = 0.0;
+    }
+    if (bulletMaterial) {
+      bulletMaterial.uniforms.uOpacity.value = 0.0;
     }
     if (material) {
       material.uniforms.uMatrixOpacity.value = 0.0;
@@ -846,6 +883,12 @@ function onWindowResize() {
     
     videoMesh.geometry.dispose(); // Liberar memoria
     videoMesh.geometry = new THREE.PlaneGeometry(visibleWidth, visibleHeight);
+    
+    if (bulletMesh) {
+      bulletMesh.geometry.dispose();
+      bulletMesh.geometry = new THREE.PlaneGeometry(visibleWidth, visibleHeight);
+    }
+    
     console.log(`Recalculated frustum plane size: ${visibleWidth.toFixed(2)} x ${visibleHeight.toFixed(2)}`);
   }
 
