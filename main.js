@@ -22,7 +22,7 @@ let interactionsActivated = false;
 
 console.log("main.js loaded");
 
-// 1. GENERADOR DE TEXTURAS PROCEDIMENTAL
+// 1. GENERADOR DE TEXTURAS PROCEDIMENTAL (Lluvia de Código)
 function createCharacterTexture() {
   console.log("Generating character texture...");
   const canvas = document.createElement('canvas');
@@ -58,7 +58,7 @@ function createCharacterTexture() {
   return texture;
 }
 
-// 3. SHADERS NATIVOS PERSONALIZADOS (GLSL)
+// 3. SHADERS NATIVOS PERSONALIZADOS DE LA LLUVIA DE CÓDIGO (GLSL)
 const vertexShader = `
   attribute vec3 aRandom;
   varying vec2 vUv;
@@ -179,6 +179,34 @@ const fragmentShader = `
   }
 `;
 
+// SHADER DE INTEGRACIÓN PARA EL VÍDEO (Edge-Fade Vignette)
+const videoVertexShader = `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const videoFragmentShader = `
+  uniform sampler2D uVideoTexture;
+  uniform float uOpacity;
+  varying vec2 vUv;
+
+  void main() {
+    vec4 texColor = texture2D(uVideoTexture, vUv);
+    
+    // Suavizado en los 4 bordes externos (Vignette interna) usando smoothstep
+    float edgeFade = smoothstep(0.0, 0.2, vUv.x) * 
+                     smoothstep(1.0, 0.8, vUv.x) * 
+                     smoothstep(0.0, 0.2, vUv.y) * 
+                     smoothstep(1.0, 0.8, vUv.y);
+                     
+    // Multiplicar color por el degradado de bordes y por la opacidad controlada por scroll
+    gl_FragColor = vec4(texColor.rgb * edgeFade * uOpacity, texColor.a * edgeFade * uOpacity);
+  }
+`;
+
 function init() {
   console.log("init() starting...");
   
@@ -227,26 +255,35 @@ function init() {
   videoTexture.minFilter = THREE.LinearFilter;
   videoTexture.magFilter = THREE.LinearFilter;
 
-  // 2. MAPEADO EN LA ESCENA 3D (Materia y Lente)
-  const videoGeometry = new THREE.PlaneGeometry(3.2, 1.8);
-  videoMaterial = new THREE.MeshBasicMaterial({
-    map: videoTexture,
+  // 2. CÁLCULO DINÁMICO DEL FRUSTUM (Ajuste al 100% de pantalla a 4.0 unidades de distancia)
+  const visibleHeight = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * 4.0;
+  const visibleWidth = visibleHeight * (window.innerWidth / window.innerHeight);
+  const videoGeometry = new THREE.PlaneGeometry(visibleWidth, visibleHeight);
+  console.log(`Dynamic frustum size at Z-offset 4.0: ${visibleWidth.toFixed(2)} x ${visibleHeight.toFixed(2)}`);
+
+  // SHADER DE INTEGRACIÓN PARA EL VÍDEO (Fusión suave aditiva con el negro)
+  videoMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+      uVideoTexture: { value: videoTexture },
+      uOpacity: { value: 0.0 }
+    },
+    vertexShader: videoVertexShader,
+    fragmentShader: videoFragmentShader,
     transparent: true,
-    opacity: 0.0,
     blending: THREE.AdditiveBlending,
     depthWrite: false
   });
 
   videoMesh = new THREE.Mesh(videoGeometry, videoMaterial);
-  // Posición inicial: Z: 1.0 (a una distancia de 4 unidades de la cámara que empieza en Z: 5)
+  // Posición inicial: Z: 1.0 (a una distancia de 4 unidades de la cámara en Z: 5)
   videoMesh.position.set(0, 0.0, camera.position.z - 4.0);
   scene.add(videoMesh);
   console.log("Video plane mesh loaded at Z:", videoMesh.position.z);
 
-  // Generar textura de caracteres
+  // Generar textura de caracteres (Código Matrix)
   const characterTexture = createCharacterTexture();
 
-  // Crear material personalizado con uniforms de hover
+  // Crear material de lluvia personalizado con uniforms de hover
   material = new THREE.ShaderMaterial({
     uniforms: THREE.UniformsUtils.merge([
       THREE.UniformsLib.fog,
@@ -314,7 +351,7 @@ function init() {
   });
 
   const noiseEffect = new NoiseEffect({
-    blendFunction: BlendFunction.SCREEN,
+    blendFunction: Function.SCREEN,
     premultiply: true
   });
   noiseEffect.blendMode.opacity.value = 0.18;
@@ -456,9 +493,11 @@ function animate() {
       video.currentTime = scrollProgress * video.duration;
     }
 
-    // Controlar opacidad del vídeo: invisible en scroll 0.0, totalmente opaco en 0.8
+    // 3. CONTROL DE OPACIDAD AJUSTADO
+    // Invisible desde 0.0 a 0.3. Fundido a 1.0 entre 0.3 y 0.85
     if (videoMaterial) {
-      videoMaterial.opacity = Math.min(1.0, scrollProgress / 0.8);
+      const targetOpacity = Math.max(0.0, Math.min(1.0, (scrollProgress - 0.3) / 0.55));
+      videoMaterial.uniforms.uOpacity.value = targetOpacity;
     }
 
     // Comprobación de hito interactivo (> 0.98)
@@ -468,7 +507,7 @@ function animate() {
       activatePillInteractions(false);
     }
 
-    // Lerp de los estados de Hover para los uniforms
+    // Lerp de los estados de Hover para los uniforms de la lluvia de código
     currentHoverRed += (targetHoverRed - currentHoverRed) * 0.1;
     currentHoverBlue += (targetHoverBlue - currentHoverBlue) * 0.1;
 
@@ -482,7 +521,7 @@ function animate() {
     if (appState === 'MATRIX') {
       camera.position.z -= 0.002;
       
-      // Anclar el plano de vídeo a una distancia fija en Z respecto a la cámara (ej. 4.0 unidades al frente)
+      // Anclar el plano de vídeo a una distancia fija en Z respecto a la cámara (4.0 unidades al frente)
       if (videoMesh) {
         videoMesh.position.z = camera.position.z - 4.0;
       }
@@ -492,7 +531,7 @@ function animate() {
       camera.position.z -= cameraSpeed;
     }
 
-    // Reciclado infinito de columnas en Z
+    // Reciclado infinito de columnas de lluvia en Z
     if (instancedMesh) {
       const tempMatrix = new THREE.Matrix4();
       const tempPosition = new THREE.Vector3();
@@ -529,6 +568,17 @@ function onWindowResize() {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
   composer.setSize(window.innerWidth, window.innerHeight);
+
+  // Recalcular dinámicamente el tamaño del plano de vídeo para que ocupe el 100% de la pantalla a 4.0 unidades
+  if (videoMesh) {
+    const visibleHeight = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * 4.0;
+    const visibleWidth = visibleHeight * (window.innerWidth / window.innerHeight);
+    
+    videoMesh.geometry.dispose(); // Liberar memoria
+    videoMesh.geometry = new THREE.PlaneGeometry(visibleWidth, visibleHeight);
+    console.log(`Recalculated frustum plane size: ${visibleWidth.toFixed(2)} x ${visibleHeight.toFixed(2)}`);
+  }
+
   console.log("Resize triggered. Size:", window.innerWidth, "x", window.innerHeight);
 }
 
