@@ -130,6 +130,22 @@ html, body {
   }
 }
 
+/* Hotspots: reposicionamiento para portrait móvil (encuadre cover) */
+@media (max-width: 768px) and (orientation: portrait) {
+  .pill-hotspot.blue {
+    left: 30vw;
+    top: 62vh;
+    width: 20vw;
+    height: 11vh;
+  }
+  .pill-hotspot.red {
+    left: 70vw;
+    top: 62vh;
+    width: 20vw;
+    height: 11vh;
+  }
+}
+
 /* --- OVERLAYS DE FINALIZACIÓN --- */
 
 #blue-sim-overlay {

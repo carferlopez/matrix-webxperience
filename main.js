@@ -4,7 +4,7 @@ import { EffectComposer, RenderPass, EffectPass, BloomEffect, NoiseEffect, Chrom
 let scene, camera, renderer, composer;
 let material, clock;
 let instancedMesh;
-let appState = 'MATRIX'; // MATRIX, CHOICE_MADE, BULLET_TIME, END_RED, BLUE_SIM
+let appState = 'MATRIX'; // MATRIX, BULLET_TIME, END_RED, BLUE_SIM
 
 // Variables para el control de vídeo y scroll virtual
 let video, videoTexture, videoMaterial, videoMesh;
@@ -213,18 +213,31 @@ const videoVertexShader = `
 const videoFragmentShader = `
   uniform sampler2D uVideoTexture;
   uniform float uOpacity;
+  uniform vec2 uVideoRes;
+  uniform vec2 uPlaneRes;
   varying vec2 vUv;
 
   void main() {
-    vec4 texColor = texture2D(uVideoTexture, vUv);
-    
+    // Cover UV: escala el vídeo para cubrir el plano preservando el aspecto real (sin deformación)
+    float planeAspect = uPlaneRes.x / uPlaneRes.y;
+    float videoAspect = uVideoRes.x / uVideoRes.y;
+    vec2 uv = vUv;
+    if (planeAspect > videoAspect) {
+      // Plano más ancho que el vídeo: escalar en X, recortar arriba/abajo
+      uv.y = (vUv.y - 0.5) * (videoAspect / planeAspect) + 0.5;
+    } else {
+      // Plano más alto que el vídeo: escalar en Y, recortar izquierda/derecha
+      uv.x = (vUv.x - 0.5) * (planeAspect / videoAspect) + 0.5;
+    }
+
+    vec4 texColor = texture2D(uVideoTexture, uv);
+
     // Suavizado en los 4 bordes externos (Vignette interna) usando smoothstep
-    float edgeFade = smoothstep(0.0, 0.2, vUv.x) * 
-                     smoothstep(1.0, 0.8, vUv.x) * 
-                     smoothstep(0.0, 0.2, vUv.y) * 
+    float edgeFade = smoothstep(0.0, 0.2, vUv.x) *
+                     smoothstep(1.0, 0.8, vUv.x) *
+                     smoothstep(0.0, 0.2, vUv.y) *
                      smoothstep(1.0, 0.8, vUv.y);
-                     
-    // Multiplicar color por el degradado de bordes y por la opacidad controlada por scroll
+
     gl_FragColor = vec4(texColor.rgb * edgeFade * uOpacity, texColor.a * edgeFade * uOpacity);
   }
 `;
@@ -257,7 +270,9 @@ function init() {
   console.log("WebGLRenderer instantiated.");
 
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setPixelRatio(isTouchDevice
+    ? Math.min(window.devicePixelRatio, 1.5)
+    : Math.min(window.devicePixelRatio, 2));
 
   // Inicializar reloj
   clock = new THREE.Clock();
@@ -280,8 +295,8 @@ function init() {
   // CREACIÓN PROGRAMÁTICA DEL VÍDEO DE BULLET-TIME (con fallback dinámico y audio)
   bulletVideo = document.createElement('video');
   bulletVideo.src = isTouchDevice ? '/bullet_time_mobile.mp4' : '/bullet_time.mp4';
-  bulletVideo.preload = 'auto';
-  bulletVideo.muted = false; // Permitimos audio porque se reproduce tras el click del usuario
+  bulletVideo.preload = 'none';
+  bulletVideo.muted = true; // Se desmutea justo antes del play, tras el click del usuario
   bulletVideo.playsInline = true;
   bulletVideo.setAttribute('playsinline', '');
   bulletVideo.setAttribute('webkit-playsinline', '');
@@ -311,7 +326,9 @@ function init() {
   videoMaterial = new THREE.ShaderMaterial({
     uniforms: {
       uVideoTexture: { value: videoTexture },
-      uOpacity: { value: 0.0 }
+      uOpacity: { value: 0.0 },
+      uVideoRes: { value: new THREE.Vector2(1920, 1080) },
+      uPlaneRes: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
     },
     vertexShader: videoVertexShader,
     fragmentShader: videoFragmentShader,
@@ -329,7 +346,9 @@ function init() {
   bulletMaterial = new THREE.ShaderMaterial({
     uniforms: {
       uVideoTexture: { value: bulletTexture },
-      uOpacity: { value: 0.0 }
+      uOpacity: { value: 0.0 },
+      uVideoRes: { value: new THREE.Vector2(1920, 1080) },
+      uPlaneRes: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
     },
     vertexShader: videoVertexShader,
     fragmentShader: videoFragmentShader,
@@ -343,6 +362,29 @@ function init() {
   bulletMesh.position.set(0, 0.0, camera.position.z - 4.0);
   scene.add(bulletMesh);
   console.log("Bullet plane mesh loaded at Z:", bulletMesh.position.z);
+
+  // Actualizar resolución real del vídeo al cargar metadatos (para cover UV correcto)
+  video.addEventListener('loadedmetadata', () => {
+    if (videoMaterial && video.videoWidth > 0) {
+      videoMaterial.uniforms.uVideoRes.value.set(video.videoWidth, video.videoHeight);
+    }
+  });
+  if (video.videoWidth > 0 && videoMaterial) {
+    videoMaterial.uniforms.uVideoRes.value.set(video.videoWidth, video.videoHeight);
+  }
+  bulletVideo.addEventListener('loadedmetadata', () => {
+    if (bulletMaterial && bulletVideo.videoWidth > 0) {
+      bulletMaterial.uniforms.uVideoRes.value.set(bulletVideo.videoWidth, bulletVideo.videoHeight);
+    }
+  });
+
+  // Fallback para el vídeo de píldoras en móvil
+  video.addEventListener('error', () => {
+    if (isTouchDevice && video.src.includes('mobile')) {
+      console.warn("Mobile pills video failed, falling back to desktop version");
+      video.src = '/morfeo_pills_opt.mp4';
+    }
+  });
 
   // Generar textura de caracteres (Código Matrix)
   const characterTexture = createCharacterTexture();
@@ -369,7 +411,7 @@ function init() {
   console.log("ShaderMaterial created.");
 
   // 2. ARQUITECTURA DE RENDIMIENTO (InstancedMesh)
-  const count = 600;
+  const count = isTouchDevice ? 250 : 600;
   const geometry = new THREE.PlaneGeometry(0.12, 5.0);
 
   const randomData = new Float32Array(count * 3);
@@ -410,50 +452,57 @@ function init() {
   scene.add(instancedMesh);
   console.log("InstancedMesh and cached positions array added.");
 
-  // 4. PIPELINE DE POSTPROCESADO (La Lente)
+  // 4. PIPELINE DE POSTPROCESADO ADAPTATIVO (Stack completo en desktop, ligero en móvil)
   composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
 
-  const bloomEffect = new BloomEffect({
-    intensity: 2.0,
-    luminanceThreshold: 0.15,
-    luminanceSmoothing: 0.9,
-    mipmapBlur: true
-  });
-
-  const noiseEffect = new NoiseEffect({
-    blendFunction: BlendFunction.SCREEN,
-    premultiply: true
-  });
-  // Si se prefiere movimiento reducido, atenuamos el grano de película
-  noiseEffect.blendMode.opacity.value = prefersReducedMotion ? 0.04 : 0.18;
-
-  // Aberración cromática sutil
-  const chromaEffect = new ChromaticAberrationEffect({
-    offset: prefersReducedMotion ? new THREE.Vector2(0.0002, 0.0002) : new THREE.Vector2(0.0015, 0.0015)
-  });
-
-  // Viñeta suave en los bordes de la cámara
   const vignetteEffect = new VignetteEffect({
     eskil: false,
     offset: 0.25,
     darkness: 0.5
   });
 
-  // Profundidad de campo (rack focus) con enfoque dinámico
-  dofEffect = new DepthOfFieldEffect(camera, {
-    focusDistance: 0.02,
-    focalLength: prefersReducedMotion ? 0.01 : 0.05,
-    bokehScale: prefersReducedMotion ? 0.5 : 2.0,
-    height: 480
-  });
-
-  // Asegurar que la cámara se use como referencia inicial de foco
-  if (videoMesh) {
-    dofEffect.target = videoMesh.position;
+  let effectPass;
+  if (isTouchDevice) {
+    // Stack ligero: sin DoF ni aberración cromática, Bloom suave sin mipmapBlur
+    const mobileBloom = new BloomEffect({
+      intensity: 0.7,
+      luminanceThreshold: 0.15,
+      luminanceSmoothing: 0.9,
+      mipmapBlur: false
+    });
+    const mobileNoise = new NoiseEffect({
+      blendFunction: BlendFunction.SCREEN,
+      premultiply: true
+    });
+    mobileNoise.blendMode.opacity.value = 0.08;
+    effectPass = new EffectPass(camera, mobileBloom, mobileNoise, vignetteEffect);
+  } else {
+    const bloomEffect = new BloomEffect({
+      intensity: 2.0,
+      luminanceThreshold: 0.15,
+      luminanceSmoothing: 0.9,
+      mipmapBlur: true
+    });
+    const noiseEffect = new NoiseEffect({
+      blendFunction: BlendFunction.SCREEN,
+      premultiply: true
+    });
+    noiseEffect.blendMode.opacity.value = prefersReducedMotion ? 0.04 : 0.18;
+    const chromaEffect = new ChromaticAberrationEffect({
+      offset: prefersReducedMotion ? new THREE.Vector2(0.0002, 0.0002) : new THREE.Vector2(0.0015, 0.0015)
+    });
+    dofEffect = new DepthOfFieldEffect(camera, {
+      focusDistance: 0.02,
+      focalLength: prefersReducedMotion ? 0.01 : 0.05,
+      bokehScale: prefersReducedMotion ? 0.5 : 2.0,
+      height: 480
+    });
+    if (videoMesh) {
+      dofEffect.target = videoMesh.position;
+    }
+    effectPass = new EffectPass(camera, bloomEffect, noiseEffect, chromaEffect, vignetteEffect, dofEffect);
   }
-
-  const effectPass = new EffectPass(camera, bloomEffect, noiseEffect, chromaEffect, vignetteEffect, dofEffect);
   composer.addPass(effectPass);
 
   // Inicializar controladores de interacción
@@ -552,7 +601,8 @@ function setupUIEventListeners() {
         // se queda estático en su Z actual para crear efecto de punch-through
       }
 
-      // Reproducir bulletVideo de manera robusta
+      // Desmutar y reproducir bulletVideo (se mantuvo muted hasta el gesto del usuario)
+      if (bulletVideo) bulletVideo.muted = false;
       playBulletVideo();
 
       if (uiOverlay) {
@@ -592,6 +642,8 @@ function setupUIEventListeners() {
 
 function playBulletVideo() {
   if (!bulletVideo) return;
+  // Un solo vídeo decodificando a la vez
+  if (video && !video.paused) video.pause();
   const playPromise = bulletVideo.play();
   if (playPromise !== undefined) {
     playPromise.catch(error => {
@@ -843,23 +895,6 @@ function animate() {
     // Reciclado de lluvia
     recycleRainColumns();
 
-  } else if (appState === 'CHOICE_MADE') {
-    if (prefersReducedMotion) {
-      transitionToBulletTime();
-    } else {
-      // Aceleración exponencial (atravesamos el plano del vídeo)
-      cameraSpeed *= 1.15;
-      camera.position.z -= cameraSpeed;
-
-      // Al cruzar el plano (cámara pasa la posición Z estática del plano), transicionar
-      if (videoMesh && camera.position.z <= videoMesh.position.z) {
-        transitionToBulletTime();
-      }
-    }
-    
-    // Reciclado de lluvia
-    recycleRainColumns();
-
   } else if (appState === 'BULLET_TIME') {
     // Lerp de opacidades para la transición fluida
     transitionOpacityMatrix += (0.0 - transitionOpacityMatrix) * 0.05;
@@ -914,6 +949,9 @@ function onWindowResize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   composer.setSize(window.innerWidth, window.innerHeight);
 
+  if (videoMaterial) videoMaterial.uniforms.uPlaneRes.value.set(window.innerWidth, window.innerHeight);
+  if (bulletMaterial) bulletMaterial.uniforms.uPlaneRes.value.set(window.innerWidth, window.innerHeight);
+
   // Recalcular dinámicamente el tamaño del plano de vídeo para que ocupe el 100% de la pantalla a 4.0 unidades
   if (videoMesh) {
     const visibleHeight = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * 4.0;
@@ -946,16 +984,11 @@ if (entryBtn) {
     // Inicializar experiencia Three.js (crea elementos de vídeo e inicia bucle)
     init();
 
-    // Desbloqueo inmediato en iOS haciendo play e inmediatamente pause
+    // Desbloqueo inmediato en iOS: play+pause SOLO del vídeo de píldoras (un vídeo a la vez)
     if (video) {
       video.play().then(() => {
         video.pause();
       }).catch(err => console.warn("Error unlocking pills video:", err));
-    }
-    if (bulletVideo) {
-      bulletVideo.play().then(() => {
-        bulletVideo.pause();
-      }).catch(err => console.warn("Error unlocking bullet video:", err));
     }
 
     // Ocultar overlay con transición CSS
