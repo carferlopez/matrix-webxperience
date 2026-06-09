@@ -18,6 +18,7 @@ let currentHoverRed = 0.0;
 let currentHoverBlue = 0.0;
 let cameraSpeed = 0.002;
 let frameCount = 0;
+let interactionsActivated = false;
 
 console.log("main.js loaded");
 
@@ -211,35 +212,36 @@ function init() {
   // Inicializar reloj
   clock = new THREE.Clock();
 
-  // 2. CONFIGURACIÓN DEL MOTOR DE VÍDEO
-  video = document.getElementById('morpheus-video');
-  if (video) {
-    console.log("HTML video element found.");
-    // Forzar carga de metadatos de forma segura
-    video.load();
+  // 1. CREACIÓN PROGRAMÁTICA DEL ELEMENTO DE VÍDEO
+  video = document.createElement('video');
+  video.src = '/morfeo_pills_opt.mp4';
+  video.preload = 'auto';
+  video.muted = true;
+  video.playsInline = true;
+  video.setAttribute('playsinline', '');
+  video.setAttribute('webkit-playsinline', '');
+  video.loop = false;
+  console.log("Programmatic video element initialized.");
 
-    videoTexture = new THREE.VideoTexture(video);
-    videoTexture.minFilter = THREE.LinearFilter;
-    videoTexture.magFilter = THREE.LinearFilter;
+  videoTexture = new THREE.VideoTexture(video);
+  videoTexture.minFilter = THREE.LinearFilter;
+  videoTexture.magFilter = THREE.LinearFilter;
 
-    // Plano centrado ligeramente detrás de la lluvia de código frontal
-    const videoGeometry = new THREE.PlaneGeometry(3.2, 1.8);
-    videoMaterial = new THREE.MeshBasicMaterial({
-      map: videoTexture,
-      transparent: true,
-      opacity: 0.0,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false
-    });
+  // 2. MAPEADO EN LA ESCENA 3D (Materia y Lente)
+  const videoGeometry = new THREE.PlaneGeometry(3.2, 1.8);
+  videoMaterial = new THREE.MeshBasicMaterial({
+    map: videoTexture,
+    transparent: true,
+    opacity: 0.0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
 
-    videoMesh = new THREE.Mesh(videoGeometry, videoMaterial);
-    // Posición inicial relativa a la cámara
-    videoMesh.position.set(0, 0.0, camera.position.z - 6.5);
-    scene.add(videoMesh);
-    console.log("Video plane mesh added to scene.");
-  } else {
-    console.error("Video element #morpheus-video not found in HTML!");
-  }
+  videoMesh = new THREE.Mesh(videoGeometry, videoMaterial);
+  // Posición inicial: Z: 1.0 (a una distancia de 4 unidades de la cámara que empieza en Z: 5)
+  videoMesh.position.set(0, 0.0, camera.position.z - 4.0);
+  scene.add(videoMesh);
+  console.log("Video plane mesh loaded at Z:", videoMesh.position.z);
 
   // Generar textura de caracteres
   const characterTexture = createCharacterTexture();
@@ -285,7 +287,6 @@ function init() {
   const scale = new THREE.Vector3(1, 1, 1);
 
   for (let i = 0; i < count; i++) {
-    // Distribución espacial en caja 3D (X: -8 a 8, Y: -2 a 10, Z: -12 a 0)
     position.set(
       (Math.random() - 0.5) * 16,
       Math.random() * 12 - 2,
@@ -331,13 +332,13 @@ function init() {
   animate();
 }
 
+// 3. SISTEMA DE SCROLL VIRTUAL CON INERCIA
 function setupScrollController() {
   console.log("Setting up virtual scroll controller...");
   
   window.addEventListener('wheel', (e) => {
     if (appState !== 'MATRIX') return;
     
-    // Sensibilidad del scroll
     const speed = 0.0008;
     targetScrollProgress = Math.max(0.0, Math.min(1.0, targetScrollProgress + e.deltaY * speed));
   });
@@ -367,17 +368,22 @@ function setupUIEventListeners() {
   if (redButton && blueButton) {
     console.log("UI Buttons found, attaching listeners...");
 
-    // Hover píldora roja (Glitch y virado a rojo)
-    redButton.addEventListener('mouseenter', () => targetHoverRed = 1.0);
-    redButton.addEventListener('mouseleave', () => targetHoverRed = 0.0);
+    redButton.addEventListener('mouseenter', () => {
+      if (interactionsActivated) targetHoverRed = 1.0;
+    });
+    redButton.addEventListener('mouseleave', () => {
+      targetHoverRed = 0.0;
+    });
 
-    // Hover píldora azul (Virado a azul)
-    blueButton.addEventListener('mouseenter', () => targetHoverBlue = 1.0);
-    blueButton.addEventListener('mouseleave', () => targetHoverBlue = 0.0);
+    blueButton.addEventListener('mouseenter', () => {
+      if (interactionsActivated) targetHoverBlue = 1.0;
+    });
+    blueButton.addEventListener('mouseleave', () => {
+      targetHoverBlue = 0.0;
+    });
 
-    // Click Píldora Roja: Despertar en el mundo real
     redButton.addEventListener('click', () => {
-      if (appState !== 'MATRIX') return;
+      if (appState !== 'MATRIX' || !interactionsActivated) return;
       console.log("Red Pill chosen!");
       appState = 'CHOICE_MADE';
       cameraSpeed = 0.002;
@@ -388,13 +394,11 @@ function setupUIEventListeners() {
       }
     });
 
-    // Click Píldora Azul: Volver a la matriz (Glitch masivo y redirección)
     blueButton.addEventListener('click', () => {
-      if (appState !== 'MATRIX') return;
+      if (appState !== 'MATRIX' || !interactionsActivated) return;
       console.log("Blue Pill chosen!");
       appState = 'GLITCH_OUT';
 
-      // Disparar glitch máximo
       targetHoverBlue = 15.0;
       currentHoverBlue = 15.0;
       material.uniforms.uHoverBlue.value = 15.0;
@@ -413,41 +417,58 @@ function setupUIEventListeners() {
   }
 }
 
+// 4. HITO FINAL INTERACTIVO (Las Píldoras)
+function activatePillInteractions(isActive) {
+  const uiOverlay = document.getElementById('ui-overlay');
+  if (!uiOverlay) return;
+
+  if (isActive) {
+    if (!interactionsActivated) {
+      console.log("activatePillInteractions: Habilitando controles de elección.");
+      uiOverlay.style.opacity = '1';
+      uiOverlay.style.pointerEvents = 'auto';
+      interactionsActivated = true;
+    }
+  } else {
+    // Si rebobina con scroll, ocultar
+    if (appState === 'MATRIX' && interactionsActivated) {
+      console.log("activatePillInteractions: Deshabilitando controles de elección (scroll invertido).");
+      uiOverlay.style.opacity = '0';
+      uiOverlay.style.pointerEvents = 'none';
+      interactionsActivated = false;
+    }
+  }
+}
+
 function animate() {
   requestAnimationFrame(animate);
 
   let elapsedTime = clock.getElapsedTime();
 
   if (appState === 'GLITCH_OUT') {
-    // Congelar reloj (congelar uTime)
     elapsedTime = clock.elapsedTime; 
   } else {
-    // 3. CONTROL POR SCROLL VIRTUAL SINCRONIZADO
+    // Calcular suavizado de scroll mediante lerp
     scrollProgress += (targetScrollProgress - scrollProgress) * 0.05;
 
-    // Sincronizar el progreso del vídeo (currentTime) de forma matemática
+    // Sincronizar el progreso del vídeo fotograma a fotograma
     if (video && !isNaN(video.duration) && video.duration > 0) {
       video.currentTime = scrollProgress * video.duration;
     }
 
-    // Lerp de opacidad del vídeo: 0.0 en scroll 0.0, opaco 1.0 en scroll 0.8
+    // Controlar opacidad del vídeo: invisible en scroll 0.0, totalmente opaco en 0.8
     if (videoMaterial) {
       videoMaterial.opacity = Math.min(1.0, scrollProgress / 0.8);
     }
 
-    // 4. HITO FINAL INTERACTIVO (Las Píldoras)
-    const uiOverlay = document.getElementById('ui-overlay');
-    if (uiOverlay && appState === 'MATRIX') {
-      if (scrollProgress >= 0.95) {
-        uiOverlay.style.opacity = '1';
-        uiOverlay.style.pointerEvents = 'auto';
-      } else {
-        uiOverlay.style.opacity = '0';
-        uiOverlay.style.pointerEvents = 'none';
-      }
+    // Comprobación de hito interactivo (> 0.98)
+    if (scrollProgress >= 0.98) {
+      activatePillInteractions(true);
+    } else {
+      activatePillInteractions(false);
     }
 
-    // Lerp suave de los estados de Hover para los uniforms
+    // Lerp de los estados de Hover para los uniforms
     currentHoverRed += (targetHoverRed - currentHoverRed) * 0.1;
     currentHoverBlue += (targetHoverBlue - currentHoverBlue) * 0.1;
 
@@ -457,15 +478,13 @@ function animate() {
       material.uniforms.uTime.value = elapsedTime;
     }
 
-    // Animaciones de cámara y vídeo según el estado
+    // Animaciones de cámara y plano de vídeo según el estado
     if (appState === 'MATRIX') {
-      // Dolly-in lento e infinito
       camera.position.z -= 0.002;
       
-      // Anclar el plano de vídeo a una distancia fija en Z respecto a la cámara
-      // Esto mantiene el encuadre del vídeo mientras el código vuela de fondo
+      // Anclar el plano de vídeo a una distancia fija en Z respecto a la cámara (ej. 4.0 unidades al frente)
       if (videoMesh) {
-        videoMesh.position.z = camera.position.z - 6.5;
+        videoMesh.position.z = camera.position.z - 4.0;
       }
     } else if (appState === 'CHOICE_MADE') {
       // Aceleración exponencial (atravesamos el plano del vídeo)
@@ -484,9 +503,7 @@ function animate() {
         instancedMesh.getMatrixAt(i, tempMatrix);
         tempMatrix.decompose(tempPosition, tempQuaternion, tempScale);
 
-        // Si la columna pasa por detrás de la cámara
         if (tempPosition.z > camera.position.z + 0.5) {
-          // Reposicionar al fondo en Z relativo a la cámara
           tempPosition.z = camera.position.z - 12.0;
           tempPosition.x = (Math.random() - 0.5) * 16;
           tempPosition.y = Math.random() * 12 - 2;
