@@ -39,6 +39,9 @@ html, body {
 }
 
 .ui-content {
+  position: absolute;
+  top: 15vh;
+  width: 100%;
   text-align: center;
   display: flex;
   flex-direction: column;
@@ -69,13 +72,11 @@ html, body {
   background: transparent;
   border: none;
   cursor: pointer;
-  width: clamp(70px, 9vw, 150px);
-  aspect-ratio: 2 / 1;
-  border-radius: 9999px;
   pointer-events: auto;
   outline: none;
   transition: all 0.3s ease;
   z-index: 15;
+  border-radius: 50%;
 }
 
 .pill-hotspot:focus-visible {
@@ -84,14 +85,18 @@ html, body {
 }
 
 .pill-hotspot.blue {
-  left: 22%;
-  top: 63%;
+  left: 22.91vw;
+  top: 60.25vh;
+  width: 11.41vw;
+  height: 17.01vh;
   transform: translate(-50%, -50%);
 }
 
 .pill-hotspot.red {
-  left: 84%;
-  top: 62%;
+  left: 74.51vw;
+  top: 61.42vh;
+  width: 11.41vw;
+  height: 17.73vh;
   transform: translate(-50%, -50%);
 }
 
